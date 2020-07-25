@@ -1,17 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset
-  xmlns="http://www.google.com/schemas/sitemap/0.84"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://www.google.com/schemas/sitemap/0.84
-                      http://www.google.com/schemas/sitemap/0.84/sitemap.xsd">
- <url>
-  <loc>http://www.newgrove.co.nz/</loc>
-  <lastmod>2020-07-23T03:35:40Z</lastmod>
-  <priority>0.5000</priority>
- </url>
+<urlset xmlns="http://www.google.com/schemas/sitemap/0.9">
  <url>
   <loc>http://www.newgrove.co.nz/index.html</loc>
-  <lastmod>2020-07-23T03:35:30Z</lastmod>
-  <priority>0.5000</priority>
+  <lastmod>2020-07-23</lastmod>
  </url>
 </urlset>

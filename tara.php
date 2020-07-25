@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+window.location.replace("https://newgrove.co.nz");
 <html>
    <head>
       <title>HTML Meta Tag</title>

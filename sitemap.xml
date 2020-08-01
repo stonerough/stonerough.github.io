@@ -1,19 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.google.com/schemas/sitemap/0.9">
- <url>
-  <loc>http://www.newgrove.co.nz/index.html</loc>
+  <url>
+  <loc>https://newgrove.co.nz/index.html</loc>
   <lastmod>2020-08-01</lastmod>
+  <priority>1.0</priority>
  </url>
- <url>
+  <url>
   <loc>https://www.newgrove.co.nz/index.html</loc>
   <lastmod>2020-08-01</lastmod>
+ <priority>0.8</priority>
  </url>
  <url>
   <loc>http://newgrove.co.nz/index.html</loc>
   <lastmod>2020-08-01</lastmod>
+  <priority>0.5</priority>
  </url>
  <url>
-  <loc>https://newgrove.co.nz/index.html</loc>
+  <loc>http://www.newgrove.co.nz/index.html</loc>
   <lastmod>2020-08-01</lastmod>
+  <priority>0.5</priority>
  </url>
 </urlset>

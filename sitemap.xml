@@ -8,16 +8,13 @@
   <url>
   <loc>https://www.newgrove.co.nz/index.html</loc>
   <lastmod>2020-08-01</lastmod>
- <priority>0.8</priority>
- </url>
+  </url>
  <url>
   <loc>http://newgrove.co.nz/index.html</loc>
   <lastmod>2020-08-01</lastmod>
-  <priority>0.5</priority>
  </url>
  <url>
   <loc>http://www.newgrove.co.nz/index.html</loc>
   <lastmod>2020-08-01</lastmod>
-  <priority>0.5</priority>
  </url>
 </urlset>

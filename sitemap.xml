@@ -2,8 +2,17 @@
 <urlset xmlns="http://www.google.com/schemas/sitemap/0.9">
  <url>
   <loc>http://www.newgrove.co.nz/index.html</loc>
+  <lastmod>2020-08-01</lastmod>
+ </url>
+ <url>
   <loc>https://www.newgrove.co.nz/index.html</loc>
+  <lastmod>2020-08-01</lastmod>
+ </url>
+ <url>
   <loc>http://newgrove.co.nz/index.html</loc>
+  <lastmod>2020-08-01</lastmod>
+ </url>
+ <url>
   <loc>https://newgrove.co.nz/index.html</loc>
   <lastmod>2020-08-01</lastmod>
  </url>

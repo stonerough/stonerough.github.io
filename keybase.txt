@@ -1,0 +1,81 @@
+==================================================================
+https://keybase.io/stonerough
+--------------------------------------------------------------------
+
+I hereby claim:
+
+  * I am an admin of https://newgrove.co.nz
+  * I am stonerough (https://keybase.io/stonerough) on keybase.
+  * I have a public key with fingerprint BD30 81CD E1F0 6F72 EC7E  23E6 2911 B379 678A 0C39
+
+To do so, I am signing this object:
+
+{
+  "body": {
+    "key": {
+      "eldest_kid": "0101fa29314a6d22be448189c3828d6804b4ef92c294cc69d9e736901a40fd0d85f90a",
+      "fingerprint": "bd3081cde1f06f72ec7e23e62911b379678a0c39",
+      "host": "keybase.io",
+      "key_id": "2911b379678a0c39",
+      "kid": "0101fa29314a6d22be448189c3828d6804b4ef92c294cc69d9e736901a40fd0d85f90a",
+      "uid": "ef8b01cd014a7a4ee1f2dda90bea2219",
+      "username": "stonerough"
+    },
+    "merkle_root": {
+      "ctime": 1596700677,
+      "hash_meta": "306db0378d6ca2b74d62a44c5764e26c4328478b7f28c0c3b1c1f8610a01b8d0",
+      "seqno": 17200748
+    },
+    "revoke": {
+      "sig_ids": [
+        "079a5e871092ab2c8af8f65fd15441b9fc8f8c7e8b1a6530e2a8ab68f71fe7730f"
+      ]
+    },
+    "service": {
+      "hostname": "newgrove.co.nz",
+      "protocol": "https:"
+    },
+    "type": "web_service_binding",
+    "version": 1
+  },
+  "ctime": 1596700686,
+  "expire_in": 157680000,
+  "prev": "c0f64fa5b20823cb1bb1ea9cbbf373724c31d45eddef41afccc425a452f68b24",
+  "seqno": 20,
+  "tag": "signature"
+}
+
+which yields the signature:
+
+-----BEGIN PGP MESSAGE-----
+Version: Keybase OpenPGP v2.1.13
+Comment: https://keybase.io/crypto
+
+yMLCAnicrZNbaBxVGMc3VqWJF/LgBdIIMq0SNS7nnDlzzpl96IOVqhXRIBJLrZtz
+3QybnVlnZjdNQ+o9mAdRbERsKHijG3yJCmYbQRuKeElTFcWHtUmRqpgqUjW18aXg
+mVARxEfnZZiZ//f/ft//m/PhFRtyHW2zq43JntnxtrZjR0drueIth68cdUSkRpzC
+qFPW6zc9pHSSFsuBcgoOgAAajnwXYk4UQkJjzCDzpcsQU4QBLLA2PpLIx1ISX/ma
+usQHkGNgFFDMMz7gTq9jgrCk42ochKm1FcoFDEqloQHEUKQl1cjVBPkQCpf6hDIO
+pOvbwsEoySosnOCJzgeRfWcfiut4/6H/n7lr63baMAEsL7B2lGNtuZFS3AdCc4Rg
+1reW6DjkFW3VSRqFOo5qpUFnrNep6Lg8pItxFKVZvDINMhH0LDQAhFI7Ik8GixWd
+clvrAqIEcKmFlBwJihVBHGPpUYI1IhK7iGHKBDWISTuygBIaRiDgAAqmgCVJ9CNh
+ZDtQBADFzCLEuh6VddY9CUo2ucQp7HIA9bmnGYXAR1wgybhhhnhGQQ9jKHwjmWF2
+L0xATjwXaMQZF4QZCo2m1AXG2T2WdYvrgVw3z1Z1IYJQD5fiqK7zMsqHey1UNY7S
+SEZD9ttgmlaTQhZNOlLNxMNaFC/YFEUQKvur2Iq6jpMgCu0gVvmv1BjpdfSeahDr
+YpApbDoM2Cvro+vWUgJDsOGeQIAhVwooBNTcl0IYl7oUYelChT2tlDYYciOlxMjj
+2EOGMIHwPzEia5ryUrbWoBTytBZrZ+zo/EMX59o6cpdeclF2hnId7Z1/n6yff92Y
+a5ye2tF/d/fZs/SjtyfMtttvfKf9scUDA7n2N2/qP3740cpEq97zaXjok4Xu2fM7
+p05/PX58suIs5Da98svyA0urKB57unnta18eOrl1w/RnIyfuXaZ/7Htq4IjcdfW5
+H1rLt+3se/DFFfDB2lLhrh83jz+7Z//y4sbyw4ud21enZ14/cPDPVt5ZgN2tTV3f
+Pn9E5pcOni91fdFVOPGx8/mr79/z3NSW6uNf0YVbg7VjfdUnpqeua37Xf+fA7y9v
+m+zZ/943zWjrbyMzY0+eeaH10kTHyZtnr2nc8daplVrf/XPJ3PVzp64afmZy95nL
+phtveJc34I4mue+nrrWZ+XOdXvOGd83eLd/Pb17Zt/0vGL+LIA==
+=MYBo
+-----END PGP MESSAGE-----
+
+And finally, I am proving ownership of this host by posting or
+appending to this document.
+
+View my publicly-auditable identity here: https://keybase.io/stonerough
+
+==================================================================

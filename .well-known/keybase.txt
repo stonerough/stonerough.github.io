@@ -1,0 +1,66 @@
+==================================================================
+https://keybase.io/stonerough
+--------------------------------------------------------------------
+
+I hereby claim:
+
+  * I am an admin of http://newgrove.co.nz
+  * I am stonerough (https://keybase.io/stonerough) on keybase.
+  * I have a public key with fingerprint BD30 81CD E1F0 6F72 EC7E  23E6 2911 B379 678A 0C39
+
+To do so, I am signing this object:
+
+{
+    "body": {
+        "key": {
+            "fingerprint": "bd3081cde1f06f72ec7e23e62911b379678a0c39",
+            "host": "keybase.io",
+            "key_id": "2911b379678a0c39",
+            "kid": "0101fa29314a6d22be448189c3828d6804b4ef92c294cc69d9e736901a40fd0d85f90a",
+            "uid": "ef8b01cd014a7a4ee1f2dda90bea2219",
+            "username": "stonerough"
+        },
+        "service": {
+            "hostname": "newgrove.co.nz",
+            "protocol": "http:"
+        },
+        "type": "web_service_binding",
+        "version": 1
+    },
+    "ctime": 1427156423,
+    "expire_in": 157680000,
+    "prev": null,
+    "seqno": 1,
+    "tag": "signature"
+}
+
+which yields the signature:
+
+-----BEGIN PGP MESSAGE-----
+Version: Keybase OpenPGP v2.0.8
+Comment: https://keybase.io/crypto
+
+yMH0AnicbVFbSBRhFN61DDMS6ykLzGZTk1ab+Wd2btZqpSYk+JLQRVzm8s/ssNvM
+Oju7ppsPiYhEF81EsAwSSXowSEkLjLwiJERkWkaCgRWUD8WqDyHVP2Jv/S+H/5zv
++853zpnYucWR7ByM994+NNjkdE6Pbos4KlL7pmKYaMi1GB/DAnAjKJquQjNkarqF
+8ZgokzhLSDIkFJxWGAAlBgIS0oAjCJFkOJphBVwiOcyN+Y2wzUAyohCGeZqBcujj
+02SU/Q8+sFHACZxQBMCRBCXQMgAipCiWYDmJZAEr0yxOiRRUOCABjpIkmpM5yJA0
+hxMChSsyLrMehcMFJBfZkIMKK+LIL47kGIGCyDeQZYHDRSgAQNh9I2Fo6sJFiNBh
+y9ChaURUP1bvxlA+qknQXoI9yyZGhzWqaURhnmTk6XWIHzINy5CMIKr5LSvE21Sr
+NmRja6Do21TxiZouo1UiQhSaYc3QMZ5ASMnSbFmCAgzhoSlAujF4KaSZ0KfZCA+D
+RkbPbgOjGK9HgkHbWbVuoCpqJKi2b03VBStiQqx+bKRyq8OZ7NiWmGCf05G8PfXf
+kVOqkhxv4+eLVxzTe8ddrUde+OefdCy0NI8MKB/aldXVhKIDlWdySs6lNFVdzqwJ
+tjSktR0r6CS7oJFNPypKXM9uvj4bqJt0xTNPSeCzPBybutF3dGlkfU/Hgx/ThTfz
+fdVrOS3w2+itXUXPeU/vqD+8mw/mVox35YI/S+0Z3sXOxw0iee3kPr4bur2t5TNJ
+Mw9nx+S0l96sSecJ9ffaT3VuJe1sel8P0V37fZhZ7GHLrqa4Mq7sn0/fUer1Lj29
+t8wsFz+b+hor/9J418jvf3efm0yf4+mCgYmBqrb5jMCbobK2X66m1439709fCJYL
+dwpzD398ldX+iRkqWThYGj/+FwSaF/I=
+=jMgK
+-----END PGP MESSAGE-----
+
+And finally, I am proving ownership of this host by posting or
+appending to this document.
+
+View my publicly-auditable identity here: https://keybase.io/stonerough
+
+==================================================================

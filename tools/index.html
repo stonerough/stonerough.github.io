@@ -1,13 +1,148 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tools</title>
-<style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Grove | Web Tools</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .tool-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tool-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+
+        .tool-card h2 {
+            color: #1e3a8a;
+            font-size: 1.25rem;
+            margin-bottom: 10px;
+        }
+
+        .tool-card p {
+            color: #666;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            flex-grow: 1;
+        }
+
+        .tool-footer {
+            margin-top: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #3b82f6;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            color: rgba(255,255,255,0.7);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: white;
+            text-decoration: none;
+            border-bottom: 1px solid rgba(255,255,255,0.3);
+        }
+    </style>
 </head>
 <body>
-  <h1>Tools</h1>
-  <p> Tool list is comming!</p>
+
+<div class="container">
+    <header>
+        <h1>Web Tools</h1>
+        <p>A collection of utilities for writing, coding, and library data management.</p>
+    </header>
+
+    <div class="tool-grid">
+        <a href="maori-validator.html" class="tool-card">
+            <h2>Māori Subject Heading Validator</h2>
+            <p>Validate and verify Māori subject headings for MARC records against the official MSH list.</p>
+            <div class="tool-footer">Open Tool →</div>
+        </a>
+
+        <a href="rewrite-clean-text.html" class="tool-card">
+            <h2>Plain Text Cleaner</h2>
+            <p>Fixes mojibake and encoding issues caused by Microsoft Outlook and Copilot when copying Unicode text.</p>
+            <div class="tool-footer">Open Tool →</div>
+        </a>
+
+        <a href="writing-style.html" class="tool-card">
+            <h2>Writing Style Analyzer</h2>
+            <p>Check your writing for passive voice, weasel words, and duplicate phrases to improve clarity.</p>
+            <div class="tool-footer">Open Tool →</div>
+        </a>
+
+        <a href="snip-bookmarklet-generator.html" class="tool-card">
+            <h2>Snip Bookmarklet Generator</h2>
+            <p>Convert JavaScript snippets into browser bookmarklets for quick web automation.</p>
+            <div class="tool-footer">Open Tool →</div>
+        </a>
+
+        <a href="msh.txt" class="tool-card">
+            <h2>MSH Raw Data</h2>
+            <p>The plain text source file containing the valid Māori Subject Headings used by the validator.</p>
+            <div class="tool-footer">View Raw File →</div>
+        </a>
+    </div>
+
+    <footer>
+        <p>Back to <a href="../index.html">New Grove Home</a></p>
+    </footer>
+</div>
+
 </body>
 </html>

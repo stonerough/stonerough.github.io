@@ -5,715 +5,154 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Māori Subject Heading Validator</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px;
+            max-width: 900px;
+            line-height: 1.6;
         }
+        h1 { color: #333; margin-bottom: 5px; }
+        .subtitle { color: #666; margin-bottom: 25px; font-size: 14px; }
         
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        
-        .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            font-size: 14px;
-            opacity: 0.9;
-        }
-        
-        .content {
-            padding: 30px;
-        }
-        
-        .section {
-            margin-bottom: 30px;
-        }
-        
-        .section-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1e3a8a;
+        .section { margin-bottom: 30px; }
+        .controls {
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 4px;
             margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
         }
         
         .badge {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
             font-size: 12px;
-            font-weight: 600;
+            font-weight: bold;
         }
-        
-        .badge-info {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-        
-        .badge-success {
-            background: #dcfce7;
-            color: #166534;
-        }
-        
-        .badge-warning {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        
-        #fileInput {
-            display: none;
-        }
-        
-        .file-upload {
-            border: 2px dashed #cbd5e1;
-            border-radius: 8px;
-            padding: 30px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            background: #f8fafc;
-        }
-        
-        .file-upload:hover {
-            border-color: #3b82f6;
-            background: #eff6ff;
-        }
-        
-        .file-upload.loaded {
-            border-color: #10b981;
-            background: #ecfdf5;
-        }
-        
-        .file-upload-icon {
-            font-size: 48px;
-            margin-bottom: 10px;
-        }
+        .badge-info { background: #e0e0e0; color: #333; }
+        .badge-success { background: #d4edda; color: #155724; }
         
         textarea {
             width: 100%;
-            min-height: 200px;
-            padding: 15px;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            font-family: 'Courier New', monospace;
+            height: 200px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: monospace;
             font-size: 14px;
-            resize: vertical;
-            transition: border-color 0.3s;
-        }
-        
-        textarea:focus {
-            outline: none;
-            border-color: #3b82f6;
+            box-sizing: border-box;
         }
         
         .button {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            color: white;
-            padding: 12px 30px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
-        }
-        
-        .button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(59, 130, 246, 0.4);
-        }
-        
-        .button:active {
-            transform: translateY(0);
-        }
-        
-        .button:disabled {
-            background: #94a3b8;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .results {
-            margin-top: 30px;
-            display: none;
-        }
-        
-        .results.show {
-            display: block;
-        }
-        
-        .results-header {
-            background: #f1f5f9;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        
-        .results-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        
-        .stat-box {
-            background: white;
-            padding: 15px;
-            border-radius: 6px;
-            text-align: center;
-            border-left: 4px solid #3b82f6;
-        }
-        
-        .stat-number {
-            font-size: 32px;
-            font-weight: 700;
-            color: #1e293b;
-        }
-        
-        .stat-label {
-            font-size: 12px;
-            color: #64748b;
-            text-transform: uppercase;
-            margin-top: 5px;
-        }
-        
-        .heading-list {
-            background: white;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 15px;
-        }
-        
-        .heading-item {
-            padding: 12px;
-            margin-bottom: 8px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-family: 'Courier New', monospace;
-        }
-        
-        .heading-item.valid {
-            background: #ecfdf5;
-            border-left: 4px solid #10b981;
-        }
-        
-        .heading-item.invalid {
-            background: #fef2f2;
-            border-left: 4px solid #ef4444;
-        }
-        
-        .heading-icon {
-            font-size: 20px;
-            flex-shrink: 0;
-        }
-        
-        .heading-text {
-            flex-grow: 1;
-            font-size: 15px;
-        }
-        
-        .suggestions {
-            margin-top: 8px;
-            margin-left: 36px;
-            padding: 10px;
-            background: #fffbeb;
+            padding: 10px 15px;
+            background: #e0e0e0;
+            border: 1px solid #ccc;
             border-radius: 4px;
-            border-left: 3px solid #f59e0b;
-        }
-        
-        .suggestions-title {
-            font-size: 12px;
-            font-weight: 600;
-            color: #92400e;
-            margin-bottom: 5px;
-        }
-        
-        .suggestion-item {
-            font-size: 13px;
-            color: #78350f;
-            padding: 4px 0;
-        }
-        
-        .alert {
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin-top: 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .alert-success {
-            background: #ecfdf5;
-            border: 2px solid #10b981;
-            color: #065f46;
-        }
-        
-        .alert-warning {
-            background: #fef2f2;
-            border: 2px solid #ef4444;
-            color: #991b1b;
-        }
-        
-        .alert-icon {
-            font-size: 24px;
-        }
-        
-        .instructions {
-            background: #eff6ff;
-            border-left: 4px solid #3b82f6;
-            padding: 15px 20px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-        }
-        
-        .instructions ul {
-            margin-left: 20px;
+            cursor: pointer;
+            font-weight: bold;
             margin-top: 10px;
         }
-        
-        .instructions li {
-            margin-bottom: 8px;
-            color: #1e40af;
-        }
+        .button:hover { background: #d0d0d0; }
+        .button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .auto-load-notice {
-            background: #fef3c7;
-            border-left: 4px solid #f59e0b;
-            padding: 15px 20px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-        }
+        .heading-item { padding: 8px; margin-bottom: 5px; border-radius: 4px; }
+        .valid { background: #d4edda; border-left: 4px solid #28a745; }
+        .invalid { background: #f8d7da; border-left: 4px solid #dc3545; }
+        
+        .instructions { font-size: 14px; color: #555; margin-bottom: 15px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🔍 Māori Subject Heading Validator</h1>
-            <p>Validate headings against Ngā Upoko Tukutuku (msh.txt)</p>
-        </div>
-        
-        <div class="content">
-            <!-- Step 1: Load msh.txt -->
-            <div class="section">
-                <div class="section-title">
-                    <span>Step 1: Load Validation File</span>
-                    <span class="badge badge-info" id="loadStatus">Checking for msh.txt...</span>
-                </div>
+    <h1>Māori Subject Heading Validator</h1>
+    <p class="subtitle">Validate headings against Ngā Upoko Tukutuku (msh.txt)</p>
 
-                <div class="auto-load-notice" id="autoLoadNotice" style="display: none;">
-                    <strong>💡 Pro Tip:</strong> For automatic loading, keep <code>msh.txt</code> in the same folder as this HTML file, 
-                    or embed the headings directly into this file (see instructions in the comments).
-                </div>
-                
-                <label for="fileInput" class="file-upload" id="fileUploadArea">
-                    <div class="file-upload-icon">📄</div>
-                    <div style="font-weight: 600; margin-bottom: 5px;">Click to upload msh.txt</div>
-                    <div style="font-size: 14px; color: #64748b;">or drag and drop here</div>
-                    <div style="font-size: 12px; color: #94a3b8; margin-top: 10px;">Attempting auto-load first...</div>
-                </label>
-                <input type="file" id="fileInput" accept=".txt">
-            </div>
-            
-            <!-- Step 2: Paste headings -->
-            <div class="section">
-                <div class="section-title">Step 2: Paste Māori Subject Headings</div>
-                
-                <div class="instructions">
-                    <strong>Instructions:</strong>
-                    <ul>
-                        <li>Copy the Māori Subject Headings section from your LLM output</li>
-                        <li>Paste below (bullets, checkmarks, and formatting will be automatically cleaned)</li>
-                        <li>One heading per line</li>
-                    </ul>
-                </div>
-                
-                <textarea id="headingsInput" placeholder="Paste your Māori subject headings here...&#10;&#10;Example:&#10;* Tikanga ✓ confirmed in msh.txt&#10;* Ture&#10;* Whenua"></textarea>
-            </div>
-            
-            <!-- Step 3: Validate -->
-            <div class="section">
-                <button class="button" id="validateBtn" disabled>
-                    🔍 Validate Headings
-                </button>
-            </div>
-            
-            <!-- Results -->
-            <div class="results" id="results">
-                <div class="results-header">
-                    <div class="section-title">Validation Results</div>
-                    <div class="results-stats" id="statsContainer"></div>
-                </div>
-                
-                <div id="validHeadings"></div>
-                <div id="invalidHeadings"></div>
-                <div id="alertMessage"></div>
-            </div>
+    <div class="section">
+        <div class="controls">
+            <strong>Step 1: Status:</strong> <span class="badge badge-info" id="loadStatus">Checking for msh.txt...</span>
         </div>
+        <input type="file" id="fileInput" accept=".txt" style="margin-bottom: 10px;">
+    </div>
+
+    <div class="section">
+        <div class="instructions">
+            <strong>Step 2:</strong> Paste headings below (one per line). Formatting will be cleaned automatically.
+        </div>
+        <textarea id="headingsInput" placeholder="Paste headings here..."></textarea>
+        <button class="button" id="validateBtn" disabled>Validate Headings</button>
+    </div>
+
+    <div id="results" style="display:none; margin-top: 30px;">
+        <h3>Results</h3>
+        <div id="stats" style="margin-bottom: 15px; font-weight: bold;"></div>
+        <div id="validHeadings"></div>
+        <div id="invalidHeadings"></div>
     </div>
 
     <script>
-        /*
-         * EMBEDDING INSTRUCTIONS:
-         * To create a self-contained version that doesn't need msh.txt,
-         * replace the line "let validHeadingsSet = new Set();" below with:
-         * 
-         * let validHeadingsSet = new Set([
-         *     "Ahaaha",
-         *     "Ahi kā",
-         *     ... paste all headings from msh.txt here ...
-         *     "Ūnga waka"
-         * ]);
-         * 
-         * Then comment out or remove the tryAutoLoad() function call.
-         */
-        
         let validHeadingsSet = new Set();
-        
-        // File upload handling
         const fileInput = document.getElementById('fileInput');
-        const fileUploadArea = document.getElementById('fileUploadArea');
         const loadStatus = document.getElementById('loadStatus');
         const validateBtn = document.getElementById('validateBtn');
         const headingsInput = document.getElementById('headingsInput');
-        const autoLoadNotice = document.getElementById('autoLoadNotice');
-        
-        // Try to auto-load msh.txt on page load
-        window.addEventListener('load', () => {
-            tryAutoLoad();
-        });
-        
+
+        window.addEventListener('load', tryAutoLoad);
+
         async function tryAutoLoad() {
             try {
-                // Try to fetch msh.txt from the same directory
                 const response = await fetch('msh.txt');
-                
                 if (response.ok) {
-                    const content = await response.text();
-                    const lines = content.split('\n');
-                    
-                    validHeadingsSet.clear();
-                    lines.forEach(line => {
-                        const heading = line.trim();
-                        if (heading) {
-                            validHeadingsSet.add(heading);
-                        }
-                    });
-                    
-                    loadStatus.textContent = `${validHeadingsSet.size} headings loaded`;
+                    processFileContent(await response.text());
+                    loadStatus.textContent = `${validHeadingsSet.size} headings loaded automatically`;
                     loadStatus.className = 'badge badge-success';
-                    fileUploadArea.classList.add('loaded');
-                    fileUploadArea.innerHTML = `
-                        <div class="file-upload-icon">✅</div>
-                        <div style="font-weight: 600; margin-bottom: 5px;">msh.txt loaded automatically!</div>
-                        <div style="font-size: 14px; color: #064e3b;">${validHeadingsSet.size} valid headings available</div>
-                        <div style="font-size: 12px; color: #10b981; margin-top: 10px;">Ready to validate</div>
-                    `;
-                    validateBtn.disabled = false;
-                } else {
-                    throw new Error('File not found');
                 }
-            } catch (error) {
-                // Auto-load failed, show manual upload option
-                loadStatus.textContent = 'Not Loaded';
-                loadStatus.className = 'badge badge-warning';
-                autoLoadNotice.style.display = 'block';
-                fileUploadArea.innerHTML = `
-                    <div class="file-upload-icon">📄</div>
-                    <div style="font-weight: 600; margin-bottom: 5px;">Click to upload msh.txt</div>
-                    <div style="font-size: 14px; color: #64748b;">or drag and drop here</div>
-                    <div style="font-size: 12px; color: #94a3b8; margin-top: 10px;">Auto-load unavailable - manual upload required</div>
-                `;
-            }
+            } catch (e) { loadStatus.textContent = "msh.txt not found - please upload manually"; }
         }
-        
-        fileUploadArea.addEventListener('click', () => fileInput.click());
-        
-        fileUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            fileUploadArea.style.borderColor = '#3b82f6';
-        });
-        
-        fileUploadArea.addEventListener('dragleave', () => {
-            fileUploadArea.style.borderColor = '#cbd5e1';
-        });
-        
-        fileUploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const file = e.dataTransfer.files[0];
-            if (file && file.name.endsWith('.txt')) {
-                loadFile(file);
-            }
-        });
-        
+
         fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                loadFile(file);
-            }
-        });
-        
-        function loadFile(file) {
             const reader = new FileReader();
-            reader.onload = (e) => {
-                const content = e.target.result;
-                const lines = content.split('\n');
-                
-                validHeadingsSet.clear();
-                lines.forEach(line => {
-                    const heading = line.trim();
-                    if (heading) {
-                        validHeadingsSet.add(heading);
-                    }
-                });
-                
-                loadStatus.textContent = `${validHeadingsSet.size} headings loaded`;
+            reader.onload = (event) => {
+                processFileContent(event.target.result);
+                loadStatus.textContent = `${validHeadingsSet.size} headings loaded from file`;
                 loadStatus.className = 'badge badge-success';
-                fileUploadArea.classList.add('loaded');
-                fileUploadArea.innerHTML = `
-                    <div class="file-upload-icon">✅</div>
-                    <div style="font-weight: 600; margin-bottom: 5px;">${file.name} loaded successfully</div>
-                    <div style="font-size: 14px; color: #064e3b;">${validHeadingsSet.size} valid headings available</div>
-                `;
-                validateBtn.disabled = false;
             };
-            reader.readAsText(file);
-        }
-        
-        function normalizeHeading(heading) {
-            // Remove common formatting
-            heading = heading.trim();
-            heading = heading.replace(/^[*\-•·\s]+/, '');
-            
-            // Remove validation markers
-            const patterns = [
-                /✓\s*confirmed\s*in\s*msh\.txt/gi,
-                /✓\s*confirmed/gi,
-                /\(confirmed\)/gi,
-                /\[confirmed\]/gi,
-                /\-\s*verified/gi,
-                /✓\s*verified/gi,
-                /\(valid\)/gi,
-                /\[valid\]/gi,
-                /✓/g,
-                /✗/g
-            ];
-            
-            patterns.forEach(pattern => {
-                heading = heading.replace(pattern, '');
-            });
-            
-            return heading.trim();
-        }
-        
-        function findClosestMatches(heading, maxResults = 3) {
-            const headingsArray = Array.from(validHeadingsSet);
-            const matches = [];
-            
-            for (const validHeading of headingsArray) {
-                const similarity = calculateSimilarity(heading.toLowerCase(), validHeading.toLowerCase());
-                if (similarity > 0.6) {
-                    matches.push({ heading: validHeading, score: similarity });
-                }
-            }
-            
-            matches.sort((a, b) => b.score - a.score);
-            return matches.slice(0, maxResults).map(m => m.heading);
-        }
-        
-        function calculateSimilarity(s1, s2) {
-            const longer = s1.length > s2.length ? s1 : s2;
-            const shorter = s1.length > s2.length ? s2 : s1;
-            
-            if (longer.length === 0) return 1.0;
-            
-            const editDistance = levenshteinDistance(longer, shorter);
-            return (longer.length - editDistance) / longer.length;
-        }
-        
-        function levenshteinDistance(s1, s2) {
-            const matrix = [];
-            
-            for (let i = 0; i <= s2.length; i++) {
-                matrix[i] = [i];
-            }
-            
-            for (let j = 0; j <= s1.length; j++) {
-                matrix[0][j] = j;
-            }
-            
-            for (let i = 1; i <= s2.length; i++) {
-                for (let j = 1; j <= s1.length; j++) {
-                    if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1,
-                            matrix[i][j - 1] + 1,
-                            matrix[i - 1][j] + 1
-                        );
-                    }
-                }
-            }
-            
-            return matrix[s2.length][s1.length];
-        }
-        
-        validateBtn.addEventListener('click', () => {
-            const input = headingsInput.value;
-            const lines = input.split('\n').filter(line => line.trim());
-            
-            if (lines.length === 0) {
-                alert('Please paste some headings to validate!');
-                return;
-            }
-            
-            const results = {
-                valid: [],
-                invalid: [],
-                suggestions: {}
-            };
-            
-            lines.forEach(line => {
-                const normalized = normalizeHeading(line);
-                if (!normalized) return;
-                
-                if (validHeadingsSet.has(normalized)) {
-                    results.valid.push(normalized);
-                } else {
-                    results.invalid.push(normalized);
-                    const suggestions = findClosestMatches(normalized);
-                    if (suggestions.length > 0) {
-                        results.suggestions[normalized] = suggestions;
-                    }
-                }
-            });
-            
-            displayResults(results);
+            reader.readAsText(e.target.files[0]);
         });
-        
-        function displayResults(results) {
-            const total = results.valid.length + results.invalid.length;
-            
-            // Show results section
-            document.getElementById('results').classList.add('show');
-            
-            // Stats
-            const statsHTML = `
-                <div class="stat-box">
-                    <div class="stat-number">${total}</div>
-                    <div class="stat-label">Total Checked</div>
-                </div>
-                <div class="stat-box" style="border-left-color: #10b981;">
-                    <div class="stat-number" style="color: #10b981;">${results.valid.length}</div>
-                    <div class="stat-label">Valid</div>
-                </div>
-                <div class="stat-box" style="border-left-color: #ef4444;">
-                    <div class="stat-number" style="color: #ef4444;">${results.invalid.length}</div>
-                    <div class="stat-label">Invalid</div>
-                </div>
-            `;
-            document.getElementById('statsContainer').innerHTML = statsHTML;
-            
-            // Valid headings
-            if (results.valid.length > 0) {
-                let validHTML = '<div class="section-title">✅ Valid Headings</div><div class="heading-list">';
-                results.valid.forEach(heading => {
-                    validHTML += `
-                        <div class="heading-item valid">
-                            <div class="heading-icon">✅</div>
-                            <div class="heading-text">${heading}</div>
-                        </div>
-                    `;
-                });
-                validHTML += '</div>';
-                document.getElementById('validHeadings').innerHTML = validHTML;
-            } else {
-                document.getElementById('validHeadings').innerHTML = '';
-            }
-            
-            // Invalid headings
-            if (results.invalid.length > 0) {
-                let invalidHTML = '<div class="section-title" style="color: #dc2626;">❌ Invalid Headings</div><div class="heading-list">';
-                results.invalid.forEach(heading => {
-                    invalidHTML += `
-                        <div class="heading-item invalid">
-                            <div class="heading-icon">❌</div>
-                            <div class="heading-text">${heading}</div>
-                        </div>
-                    `;
-                    
-                    if (results.suggestions[heading]) {
-                        invalidHTML += '<div class="suggestions">';
-                        invalidHTML += '<div class="suggestions-title">💡 Possible alternatives:</div>';
-                        results.suggestions[heading].forEach(suggestion => {
-                            invalidHTML += `<div class="suggestion-item">→ ${suggestion}</div>`;
-                        });
-                        invalidHTML += '</div>';
-                    }
-                });
-                invalidHTML += '</div>';
-                document.getElementById('invalidHeadings').innerHTML = invalidHTML;
-            } else {
-                document.getElementById('invalidHeadings').innerHTML = '';
-            }
-            
-            // Alert message
-            let alertHTML = '';
-            if (results.invalid.length > 0) {
-                alertHTML = `
-                    <div class="alert alert-warning">
-                        <div class="alert-icon">⚠️</div>
-                        <div>
-                            <strong>Warning:</strong> Some headings are INVALID and should be removed!<br>
-                            Only use headings from the "Valid Headings" section above.
-                        </div>
-                    </div>
-                `;
-            } else {
-                alertHTML = `
-                    <div class="alert alert-success">
-                        <div class="alert-icon">🎉</div>
-                        <div>
-                            <strong>Success!</strong> All headings are valid and can be used in your MARC records.
-                        </div>
-                    </div>
-                `;
-            }
-            document.getElementById('alertMessage').innerHTML = alertHTML;
-            
-            // Scroll to results
-            document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        function processFileContent(text) {
+            validHeadingsSet.clear();
+            text.split('\n').forEach(line => {
+                const h = line.trim();
+                if (h) validHeadingsSet.add(h);
+            });
+            validateBtn.disabled = false;
         }
+
+        function normalizeHeading(h) {
+            return h.trim().replace(/^[*\-•·\s]+/, '').replace(/✓|✗/g, '').split('confirmed')[0].trim();
+        }
+
+        validateBtn.addEventListener('click', () => {
+            const lines = headingsInput.value.split('\n').filter(l => l.trim());
+            let validHTML = '<h4>✅ Valid</h4>';
+            let invalidHTML = '<h4>❌ Invalid</h4>';
+            let vCount = 0, iCount = 0;
+
+            lines.forEach(line => {
+                const clean = normalizeHeading(line);
+                if (validHeadingsSet.has(clean)) {
+                    validHTML += `<div class="heading-item valid">${clean}</div>`;
+                    vCount++;
+                } else {
+                    invalidHTML += `<div class="heading-item invalid">${clean}</div>`;
+                    iCount++;
+                }
+            });
+
+            document.getElementById('stats').textContent = `Checked: ${lines.length} | Valid: ${vCount} | Invalid: ${iCount}`;
+            document.getElementById('validHeadings').innerHTML = vCount ? validHTML : '';
+            document.getElementById('invalidHeadings').innerHTML = iCount ? invalidHTML : '';
+            document.getElementById('results').style.display = 'block';
+        });
     </script>
 </body>
 </html>

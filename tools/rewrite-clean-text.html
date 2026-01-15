@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Plain Text Cleaner</title>
+<style>
+body { 
+    font-family: Arial, sans-serif; 
+    margin: 20px;
+    max-width: 900px;
+}
+textarea { 
+    width: 100%; 
+    height: 200px; 
+    margin-bottom: 10px; 
+    font-family: monospace;
+    font-size: 14px;
+    padding: 8px;
+    box-sizing: border-box;
+}
+.controls {
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+.controls label {
+    display: block;
+    margin-bottom: 8px;
+}
+button { 
+    padding: 10px 15px; 
+    margin-right: 10px;
+    cursor: pointer;
+}
+#stats { 
+    font-size: 14px; 
+    color: #555;
+    margin-bottom: 10px;
+}
+#changes {
+    font-size: 13px;
+    color: #d63384;
+    margin-top: 5px;
+    min-height: 20px;
+}
+.section-label {
+    font-weight: bold;
+    margin-top: 15px;
+    margin-bottom: 5px;
+}
+</style>
+</head>
+<body>
+<h2>Plain Text Cleaner</h2>
+
+<div class="controls">
+    <label>
+        <input type="radio" name="mode" value="standard" checked> 
+        Standard (preserve macrons, common symbols)
+    </label>
+    <label>
+        <input type="radio" name="mode" value="strict"> 
+        Strict ASCII (strip everything non-ASCII including macrons)
+    </label>
+    <label>
+        <input type="checkbox" id="debug"> 
+        Debug mode (show character codes for non-ASCII)
+    </label>
+</div>
+
+<div class="section-label">Input:</div>
+<textarea id="input" placeholder="Paste your text here"></textarea>
+<div id="stats">Characters: 0</div>
+
+<button onclick="cleanText()">Clean Text</button>
+<button onclick="copyText()">Copy to Clipboard</button>
+<button onclick="clearAll()">Clear All</button>
+
+<div id="changes"></div>
+
+<div class="section-label">Output:</div>
+<textarea id="output" placeholder="Cleaned text will appear here" readonly></textarea>
+
+<script>
+function cleanText() {
+    try {
+        let text = document.getElementById('input').value;
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        const debug = document.getElementById('debug').checked;
+        let changes = [];
+
+        // DEBUG MODE: Show character codes for non-ASCII
+        if (debug) {
+            let debugInfo = [];
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const code = text.charCodeAt(i);
+                if (code > 127) {
+                    debugInfo.push(char + ' (U+' + code.toString(16).toUpperCase().padStart(4, '0') + ')');
+                }
+            }
+            if (debugInfo.length > 0) {
+                alert('Non-ASCII characters found:\n' + debugInfo.join('\n'));
+                return;
+            } else {
+                alert('No non-ASCII characters found');
+                return;
+            }
+        }
+
+        // FIRST PASS: Fix mojibake (Outlook's encoding disasters)
+        // These are the actual patterns from Outlook 365 web
+        const mojibakePatterns = [
+            ['\u00E2\u20AC\u201C', '-'],     // em dash: â€" (E2 + 20AC + 201C)
+            ['\u00E2\u20AC\u201D', '-'],     // en dash variant
+            ['\u00E2\u20AC\u2122', "'"],     // apostrophe: â€™ (E2 + 20AC + 2122)
+            ['\u00E2\u20AC\u02DC', '"'],     // left double quote variant
+            ['\u00E2\u20AC\u009C', '"'],     // left double quote
+            ['\u00E2\u20AC\u009D', '"'],     // right double quote
+            ['\u00E2\u20AC\u00A6', '...'],   // ellipsis
+            // Fallback patterns for other encoding variants
+            ['\u00E2\u0080\u0094', '-'],     // em dash alternate
+            ['\u00E2\u0080\u0093', '-'],     // en dash alternate
+            ['\u00E2\u0080\u0098', "'"],     // left single quote alternate
+            ['\u00E2\u0080\u0099', "'"],     // right single quote/apostrophe alternate
+            ['\u00E2\u0080\u009C', '"'],     // left double quote alternate
+            ['\u00E2\u0080\u009D', '"'],     // right double quote alternate
+            ['\u00E2\u0080\u00A6', '...']    // ellipsis alternate
+        ];
+
+        let mojibakeCount = 0;
+        for (const [bad, good] of mojibakePatterns) {
+            const count = (text.split(bad).length - 1);
+            if (count > 0) {
+                mojibakeCount += count;
+                text = text.split(bad).join(good);
+            }
+        }
+        if (mojibakeCount > 0) {
+            changes.push(mojibakeCount + ' mojibake sequences fixed');
+        }
+
+        // SECOND PASS: Fix proper Unicode characters
+        const curlyQuotes = (text.match(/[\u2018\u2019\u201C\u201D]/g) || []).length;
+        const emDashes = (text.match(/[\u2014\u2013]/g) || []).length;
+        const ellipsis = (text.match(/\u2026/g) || []).length;
+
+        text = text.replace(/[\u2018\u2019]/g, "'");
+        text = text.replace(/[\u201C\u201D]/g, '"');
+        text = text.replace(/[\u2014\u2013]/g, '-');
+        text = text.replace(/\u2026/g, '...');
+
+        if (curlyQuotes > 0) changes.push(curlyQuotes + ' curly quotes');
+        if (emDashes > 0) changes.push(emDashes + ' em/en dashes');
+        if (ellipsis > 0) changes.push(ellipsis + ' ellipsis characters');
+
+        // THIRD PASS: Handle remaining non-ASCII based on mode
+        if (mode === 'strict') {
+            const nonAscii = (text.match(/[^\x00-\x7F]/g) || []).length;
+            text = text.replace(/[^\x00-\x7F]/g, '');
+            if (nonAscii > 0) changes.push(nonAscii + ' non-ASCII characters');
+        } else {
+            const before = text.length;
+            text = text.replace(/[^\x00-\x7F\u0100-\u017F\u00A3\u20AC\u00A5\u00A9\u00AE\u2122\u00B0]/g, '');
+            const removed = before - text.length;
+            if (removed > 0) changes.push(removed + ' other non-standard characters');
+        }
+
+        // FOURTH PASS: Normalize whitespace
+        text = text.replace(/[^\S\r\n]+/g, ' ');
+        text = text.replace(/^[ \t]+|[ \t]+$/gm, '');
+
+        document.getElementById('output').value = text;
+        
+        const changesText = changes.length > 0 
+            ? 'Replaced: ' + changes.join(', ')
+            : 'No changes needed - text was already clean';
+        document.getElementById('changes').textContent = changesText;
+        
+        updateStats(text);
+    } catch (e) {
+        alert('Error: ' + e.message);
+        console.error(e);
+    }
+}
+
+function copyText() {
+    const output = document.getElementById('output');
+    if (output.value === '') {
+        alert('Nothing to copy - clean the text first');
+        return;
+    }
+    output.select();
+    document.execCommand('copy');
+    alert('Cleaned text copied to clipboard');
+}
+
+function clearAll() {
+    document.getElementById('input').value = '';
+    document.getElementById('output').value = '';
+    document.getElementById('changes').textContent = '';
+    updateStats('');
+}
+
+function updateStats(text) {
+    const chars = text.length;
+    const lines = text ? text.split('\n').length : 0;
+    document.getElementById('stats').textContent = 
+        'Characters: ' + chars + ' | Lines: ' + lines;
+}
+
+document.getElementById('input').addEventListener('input', function() {
+    updateStats(this.value);
+});
+
+updateStats('');
+</script>
+
+<p>This tool exists because Microsoft Outlook 365 web cannot correctly handle Unicode characters pasted from Microsoft Copilot. When you copy text containing curly quotes, em dashes, or other typographic characters from one Microsoft 365 application and paste it into another, Outlook mangles the character encoding, producing mojibake (corrupted text like â€™ instead of '). This cleaner fixes Microsoft's encoding incompetence so you can use plain text that actually works across systems.</p>
+</body>
+</html>
+<!-- 
+Plain Text Cleaner - fixes mojibake from Microsoft Outlook 365 web
+Created because Microsoft can't handle UTF-8 properly in 2026
+-->
+

@@ -1,1 +1,4 @@
+User-agent: *
+Allow: /
+
 Sitemap: https://newgrove.co.nz/sitemap.xml

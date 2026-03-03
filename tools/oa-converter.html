@@ -377,11 +377,34 @@ https://www.sciencedirect.com/science/article/..."></textarea>
       </div>
     </div>
 
-    <div class="summary-bar" id="summary-bar" style="display:none">
-      <div>Total: <span id="s-total">0</span></div>
-      <div>Converted: <span id="s-ok">0</span></div>
-      <div>Warnings: <span id="s-warn">0</span></div>
-      <div>Skipped: <span id="s-skip">0</span></div>
+    <div id="summary-bar" style="display:none;border-top:1px solid #2d3348;padding:16px 24px;font-family:var(--mono);font-size:0.72rem;">
+      <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#6b7494;margin-bottom:10px">Conversion Report</div>
+      <table style="width:100%;border-collapse:collapse;color:#8899cc">
+        <tr style="border-bottom:1px solid #2d3348">
+          <td style="padding:4px 0;color:#6b7494">Converted cleanly</td>
+          <td style="text-align:right;padding:4px 0"><span id="s-ok" style="color:#7dd3a8">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#4a5470" id="s-ok-pct"></td>
+        </tr>
+        <tr style="border-bottom:1px solid #2d3348">
+          <td style="padding:4px 0;color:#6b7494">Converted with warnings</td>
+          <td style="text-align:right;padding:4px 0"><span id="s-warn" style="color:#f0a050">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#4a5470" id="s-warn-pct"></td>
+        </tr>
+        <tr style="border-bottom:1px solid #3d4560">
+          <td style="padding:4px 0;color:#aab8e0;font-weight:600">Total converted</td>
+          <td style="text-align:right;padding:4px 0;color:#aab8e0;font-weight:600"><span id="s-converted">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#6b7494" id="s-converted-pct"></td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0 4px;color:#6b7494">Not converted (skipped)</td>
+          <td style="text-align:right;padding:6px 0 4px"><span id="s-skip" style="color:#e07070">0</span></td>
+          <td style="text-align:right;padding:6px 0 4px 16px;color:#4a5470" id="s-skip-pct"></td>
+        </tr>
+        <tr style="border-top:1px solid #3d4560">
+          <td style="padding:4px 0;color:#aab8e0;font-weight:600">Total processed</td>
+          <td style="text-align:right;padding:4px 0;color:#aab8e0;font-weight:600" colspan="2"><span id="s-total">0</span></td>
+        </tr>
+      </table>
     </div>
   </div>
 </div>
@@ -605,11 +628,20 @@ function convert() {
     else nSkip++;
   });
 
-  document.getElementById('s-total').textContent = convertedResults.length;
-  document.getElementById('s-ok').textContent = nOk;
-  document.getElementById('s-warn').textContent = nWarn;
-  document.getElementById('s-skip').textContent = nSkip;
-  document.getElementById('summary-bar').style.display = 'flex';
+  const nTotal = convertedResults.length;
+  const nConverted = nOk + nWarn;
+  const pct = (n) => nTotal ? '(' + Math.round(n / nTotal * 100) + '%)' : '';
+
+  document.getElementById('s-total').textContent = nTotal.toLocaleString();
+  document.getElementById('s-ok').textContent = nOk.toLocaleString();
+  document.getElementById('s-ok-pct').textContent = pct(nOk);
+  document.getElementById('s-warn').textContent = nWarn.toLocaleString();
+  document.getElementById('s-warn-pct').textContent = pct(nWarn);
+  document.getElementById('s-converted').textContent = nConverted.toLocaleString();
+  document.getElementById('s-converted-pct').textContent = pct(nConverted);
+  document.getElementById('s-skip').textContent = nSkip.toLocaleString();
+  document.getElementById('s-skip-pct').textContent = pct(nSkip);
+  document.getElementById('summary-bar').style.display = 'block';
 }
 
 function escHtml(s) {

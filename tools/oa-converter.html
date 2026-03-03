@@ -631,11 +631,10 @@ function copyOutput() {
 }
 
 function downloadOutput() {
+  if (!convertedResults.length) return;
   const lines = convertedResults
-    .filter(r => r.output)
-    .map(r => r.output)
+    .map(r => r.output || '')
     .join('\n');
-  if (!lines) return;
   const blob = new Blob([lines], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

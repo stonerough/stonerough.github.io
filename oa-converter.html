@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenAthens URL Converter — Waikato</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --panel: #ffffff;
+    --output-bg: #1a1e2e;
+    --output-text: #e8eaf0;
+    --accent: #005b99;
+    --accent-light: #e8f1f8;
+    --warn: #b85c00;
+    --warn-bg: #fff5ec;
+    --skip: #8b1a1a;
+    --skip-bg: #fff0f0;
+    --ok: #1a6b3a;
+    --ok-bg: #edf7f1;
+    --border: #d4d0c8;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: #1a1a1a;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: var(--accent);
+    color: white;
+    padding: 18px 32px;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+  header h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  header span {
+    font-size: 0.8rem;
+    opacity: 0.7;
+    font-weight: 300;
+  }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+    gap: 0;
+  }
+
+  /* LEFT PANEL */
+  .left {
+    padding: 28px 32px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 8px;
+  }
+
+  .mode-tabs {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .mode-tab {
+    flex: 1;
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: 0.82rem;
+    font-weight: 500;
+    background: var(--panel);
+    border: none;
+    cursor: pointer;
+    color: #555;
+    transition: all 0.15s;
+    border-right: 1px solid var(--border);
+  }
+  .mode-tab:last-child { border-right: none; }
+  .mode-tab.active {
+    background: var(--accent);
+    color: white;
+  }
+  .mode-tab:not(.active):hover { background: var(--accent-light); }
+
+  textarea {
+    width: 100%;
+    height: 280px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.6;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    resize: vertical;
+    background: var(--panel);
+    color: #1a1a1a;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: #aaa; }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  button.primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 24px;
+    font-family: var(--sans);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: background 0.15s;
+  }
+  button.primary:hover { background: #004a80; }
+
+  button.secondary {
+    background: transparent;
+    color: #666;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 16px;
+    font-family: var(--sans);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  button.secondary:hover { border-color: #aaa; color: #333; }
+
+  .stats {
+    font-size: 0.78rem;
+    color: #888;
+    font-family: var(--mono);
+  }
+
+  /* RIGHT PANEL */
+  .right {
+    background: var(--output-bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .output-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #2d3348;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .output-header-left {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #6b7494;
+  }
+  .output-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-copy, .btn-dl {
+    background: #f0f4ff;
+    color: #1a3a6b;
+    border: 1px solid #a0b4d8;
+    border-radius: 3px;
+    padding: 5px 12px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-copy:hover, .btn-dl:hover { background: #ffffff; color: #005b99; border-color: #005b99; }
+
+  #output-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.8;
+  }
+
+  .output-placeholder {
+    color: #3d4560;
+    padding-top: 40px;
+    text-align: center;
+    font-size: 0.8rem;
+    line-height: 2;
+  }
+
+  .result-line {
+    padding: 3px 0;
+    word-break: break-all;
+  }
+  .result-ok { color: #7dd3a8; }
+  .result-warn {
+    color: #f0a050;
+  }
+  .result-skip { color: #e07070; }
+
+  .result-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .tag-ok { background: #1a3d2e; color: #7dd3a8; }
+  .tag-warn { background: #3d2e10; color: #f0a050; }
+  .tag-skip { background: #3d1010; color: #e07070; }
+
+  .result-note {
+    font-size: 0.68rem;
+    color: #5a6480;
+    padding-left: 8px;
+    display: block;
+  }
+
+  .summary-bar {
+    padding: 10px 24px;
+    border-top: 1px solid #2d3348;
+    display: flex;
+    gap: 20px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: #6b7494;
+  }
+  .summary-bar span { color: #aab8e0; }
+
+  /* Help accordion */
+  details {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel);
+  }
+  summary {
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    color: #444;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  summary::before { content: '▶'; font-size: 0.6rem; color: #999; transition: transform 0.2s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  .help-body {
+    padding: 0 14px 14px;
+    font-size: 0.78rem;
+    line-height: 1.7;
+    color: #555;
+  }
+  .help-body code {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    background: #f0ede8;
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+  .help-body ul { padding-left: 18px; margin-top: 6px; }
+  .help-body li { margin-bottom: 4px; }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+    .right { min-height: 400px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OpenAthens URL Converter</h1>
+  <span>University of Waikato Library</span>
+</header>
+
+<div class="main">
+  <!-- LEFT -->
+  <div class="left">
+    <div>
+      <div class="section-label">Conversion mode</div>
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="ezproxy" onclick="setMode('ezproxy', this)">EZproxy → OpenAthens</button>
+        <button class="mode-tab" data-mode="plain" onclick="setMode('plain', this)">Plain URL → OpenAthens</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Input — one URL per line</span>
+        <span style="font-weight:400;color:#999;font-size:0.68rem;letter-spacing:0">Max 2,000 URLs per batch</span>
+      </div>
+      <textarea id="input-urls" placeholder="Paste URLs here, one per line.
+Examples:
+https://link-springer-com.ezproxy.waikato.ac.nz/article/...
+https://ezproxy.waikato.ac.nz/login?qurl=https%3A%2F%2F...
+https://www.sciencedirect.com/science/article/..."></textarea>
+    </div>
+
+    <div class="btn-row">
+      <button class="primary" onclick="convert()">Convert</button>
+      <button class="secondary" onclick="clearAll()">Clear</button>
+      <label class="secondary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+        Upload file
+        <input type="file" id="file-upload" accept=".txt,.csv" style="display:none" onchange="handleUpload(event)">
+      </label>
+      <div class="stats" id="input-stats"></div>
+    </div>
+    <div id="limit-error" style="display:none;font-size:0.78rem;color:#8b1a1a;background:#fff0f0;border:1px solid #f0c0c0;border-radius:4px;padding:8px 12px"></div>
+
+    <details>
+      <summary>What this tool handles</summary>
+      <div class="help-body">
+        <ul>
+          <li><strong>Proxied hostnames:</strong> <code>vendor-host.ezproxy.waikato.ac.nz</code> → restores <code>vendor.host</code></li>
+          <li><strong>Login wrappers:</strong> strips <code>/login?url=</code> and <code>/login?qurl=</code></li>
+          <li><strong>Double-wrapped:</strong> login wrapper pointing at another EZproxy URL — both layers stripped</li>
+          <li><strong>Google redirects:</strong> extracts the inner EZproxy URL from <code>google.com/url?q=</code></li>
+          <li><strong>Truncated &amp;amp:</strong> stripped cleanly, URL converted as-is with a warning</li>
+          <li><strong>URL-encoded targets:</strong> decoded before conversion</li>
+          <li><strong>Broken/unresolvable:</strong> skipped with a note</li>
+        </ul>
+      </div>
+    </details>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <div class="output-header">
+      <div class="output-header-left">Output</div>
+      <div class="output-actions">
+        <button class="btn-copy" onclick="copyOutput()">Copy URLs</button>
+        <button class="btn-dl" onclick="downloadOutput()">Download .txt</button>
+      </div>
+    </div>
+
+    <div id="output-area">
+      <div class="output-placeholder">
+        Converted URLs will appear here.<br>
+        <span style="font-size:0.7rem">Green = converted · Orange = converted with warning · Red = skipped</span>
+      </div>
+    </div>
+
+    <div class="summary-bar" id="summary-bar" style="display:none">
+      <div>Total: <span id="s-total">0</span></div>
+      <div>Converted: <span id="s-ok">0</span></div>
+      <div>Warnings: <span id="s-warn">0</span></div>
+      <div>Skipped: <span id="s-skip">0</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const OA_PREFIX = 'https://go.openathens.net/redirector/waikato.ac.nz?url=';
+const EZPROXY_HOST = 'ezproxy.waikato.ac.nz';
+
+let currentMode = 'ezproxy';
+let convertedResults = [];
+
+function setMode(mode, el) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// Update input line count
+document.getElementById('input-urls').addEventListener('input', function() {
+  updateInputStats();
+});
+
+function updateInputStats() {
+  const val = document.getElementById('input-urls').value;
+  const lines = val.split('\n').filter(l => l.trim()).length;
+  const stats = document.getElementById('input-stats');
+  stats.textContent = lines ? lines + ' URL' + (lines !== 1 ? 's' : '') : '';
+  stats.style.color = lines > 2000 ? '#8b1a1a' : '#888';
+}
+
+function clearAll() {
+  document.getElementById('input-urls').value = '';
+  document.getElementById('input-stats').textContent = '';
+  document.getElementById('limit-error').style.display = 'none';
+  document.getElementById('file-upload').value = '';
+  document.getElementById('output-area').innerHTML = `<div class="output-placeholder">Converted URLs will appear here.<br><span style="font-size:0.7rem">Green = converted · Orange = converted with warning · Red = skipped</span></div>`;
+  document.getElementById('summary-bar').style.display = 'none';
+  convertedResults = [];
+}
+
+function handleUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    let text = e.target.result;
+    // For CSV: extract first column of each row if it looks like a CSV
+    // (i.e. lines contain commas and the first field looks like a URL)
+    const firstLine = text.split('\n')[0] || '';
+    if (firstLine.includes(',') && !firstLine.trim().startsWith('http')) {
+      // Has a header row that isn't a URL — skip it, extract first column
+      text = text.split('\n').slice(1)
+        .map(l => l.split(',')[0].replace(/^"|"$/g, '').trim())
+        .filter(l => l).join('\n');
+    } else if (firstLine.includes(',') && firstLine.trim().startsWith('http')) {
+      // No header, just extract first column
+      text = text.split('\n')
+        .map(l => l.split(',')[0].replace(/^"|"$/g, '').trim())
+        .filter(l => l).join('\n');
+    }
+    document.getElementById('input-urls').value = text;
+    updateInputStats();
+    document.getElementById('limit-error').style.display = 'none';
+  };
+  reader.readAsText(file);
+}
+
+// ---- Core cleaning logic ----
+
+function cleanEzproxyUrl(raw) {
+  // Returns { url, notes[] } or throws { skip: true, reason }
+  let url = raw.trim();
+  const notes = [];
+
+  // 1. Strip trailing &amp (HTML entity bleed, truncated query string)
+  if (url.endsWith('&amp')) {
+    url = url.slice(0, -4);
+    notes.push('Truncated &amp stripped — query string may be incomplete');
+  }
+  // Also handle &amp; variant
+  if (url.endsWith('&amp;')) {
+    url = url.slice(0, -5);
+    notes.push('Truncated &amp; stripped — query string may be incomplete');
+  }
+
+  // 2. Handle Google redirect wrapper: google.com/url?q=<url>
+  const googleMatch = url.match(/^https?:\/\/(?:www\.)?google\.com\/url\?.*?(?:^|[?&])q=([^&]+)/i);
+  if (googleMatch) {
+    const inner = decodeURIComponent(googleMatch[1]);
+    notes.push('Extracted from Google redirect wrapper');
+    url = inner;
+  }
+
+  // 3. Detect completely broken (non-URL) inputs
+  // The JS fragment: login?url='  +location.href)
+  if (url.match(/location\.href/i) || url.match(/javascript:/i)) {
+    throw { skip: true, reason: 'JavaScript fragment — not a real URL' };
+  }
+  if (!url.match(/^https?:\/\//i)) {
+    throw { skip: true, reason: 'Does not start with http:// or https://' };
+  }
+
+  // 4. Strip EZproxy login wrapper (/login?url= or /login?qurl=)
+  //    May need to do this twice for double-wrapped URLs
+  let unwrapCount = 0;
+  while (unwrapCount < 2) {
+    const loginMatch = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?(?:q?url=)(.+)$/i);
+    if (loginMatch) {
+      let target = loginMatch[1];
+      // Decode if encoded
+      try { target = decodeURIComponent(target); } catch(e) { /* leave as-is */ }
+      notes.push('EZproxy login wrapper stripped' + (unwrapCount > 0 ? ' (inner)' : ''));
+      url = target;
+      unwrapCount++;
+    } else {
+      break;
+    }
+  }
+
+  // 5. Convert proxied hostname: vendor-host.ezproxy.waikato.ac.nz -> vendor.host
+  const proxyHostMatch = url.match(/^(https?:\/\/)((?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)*(?:[a-z0-9\-]+))\.ezproxy\.waikato\.ac\.nz(\/.*)?$/i);
+  if (proxyHostMatch) {
+    const scheme = proxyHostMatch[1];
+    const proxiedHost = proxyHostMatch[2];
+    const rest = proxyHostMatch[3] || '';
+    // Revert dashes to dots in the vendor hostname
+    const realHost = proxiedHost.replace(/-/g, '.');
+    url = scheme + realHost + rest;
+    if (proxiedHost !== realHost) {
+      notes.push('Proxied hostname restored: ' + proxiedHost + ' → ' + realHost);
+    }
+  }
+
+  // 6. Final sanity check — still not a resolvable URL?
+  if (!url.match(/^https?:\/\/[a-z0-9]/i)) {
+    throw { skip: true, reason: 'Could not extract a valid URL after processing' };
+  }
+
+  return { url, notes };
+}
+
+function toOpenAthens(cleanUrl) {
+  return OA_PREFIX + encodeURIComponent(cleanUrl);
+}
+
+function convertLine(raw) {
+  const input = raw.trim();
+  if (!input) return null;
+
+  if (currentMode === 'plain') {
+    if (!input.match(/^https?:\/\//i)) {
+      return { type: 'skip', input, output: null, notes: ['Does not start with http:// or https://'] };
+    }
+    return { type: 'ok', input, output: toOpenAthens(input), notes: [] };
+  }
+
+  // EZproxy mode
+  try {
+    const { url, notes } = cleanEzproxyUrl(input);
+    const output = toOpenAthens(url);
+    // Routine proxy host restoration is not a warning — only flag genuinely unusual conditions
+    const unusualNotes = notes.filter(n => !n.startsWith('Proxied hostname restored'));
+    const type = unusualNotes.length > 0 ? 'warn' : 'ok';
+    return { type, input, output, notes: unusualNotes };
+  } catch(e) {
+    if (e.skip) {
+      return { type: 'skip', input, output: null, notes: [e.reason] };
+    }
+    return { type: 'skip', input, output: null, notes: ['Unexpected error: ' + e.message] };
+  }
+}
+
+const BATCH_LIMIT = 2000;
+
+function convert() {
+  const raw = document.getElementById('input-urls').value;
+  const lines = raw.split('\n').filter(l => l.trim());
+  if (!lines.length) return;
+
+  const errEl = document.getElementById('limit-error');
+  if (lines.length > BATCH_LIMIT) {
+    errEl.style.display = 'block';
+    errEl.textContent = lines.length.toLocaleString() + ' URLs entered — the limit is ' + BATCH_LIMIT.toLocaleString() + ' per batch. Please split your list and convert in smaller batches.';
+    return;
+  }
+  errEl.style.display = 'none';
+
+  convertedResults = lines.map(convertLine).filter(Boolean);
+
+  const outputArea = document.getElementById('output-area');
+  outputArea.innerHTML = '';
+
+  let nOk = 0, nWarn = 0, nSkip = 0;
+
+  convertedResults.forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'result-line result-' + r.type;
+
+    const tagClass = { ok: 'tag-ok', warn: 'tag-warn', skip: 'tag-skip' }[r.type];
+    const tagText = { ok: 'OK', warn: 'WARN', skip: 'SKIP' }[r.type];
+
+    let html = `<span class="result-tag ${tagClass}">${tagText}</span>`;
+
+    if (r.output) {
+      html += `<a href="${r.output}" target="_blank" style="color:inherit;text-decoration:none">${r.output}</a>`;
+    } else {
+      html += `<span style="opacity:0.5">${escHtml(r.input)}</span>`;
+    }
+
+    if (r.notes && r.notes.length) {
+      r.notes.forEach(n => {
+        html += `<span class="result-note">↳ ${escHtml(n)}</span>`;
+      });
+    }
+
+    div.innerHTML = html;
+    outputArea.appendChild(div);
+
+    if (r.type === 'ok') nOk++;
+    else if (r.type === 'warn') nWarn++;
+    else nSkip++;
+  });
+
+  document.getElementById('s-total').textContent = convertedResults.length;
+  document.getElementById('s-ok').textContent = nOk;
+  document.getElementById('s-warn').textContent = nWarn;
+  document.getElementById('s-skip').textContent = nSkip;
+  document.getElementById('summary-bar').style.display = 'flex';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function copyOutput() {
+  const lines = convertedResults
+    .filter(r => r.output)
+    .map(r => r.output)
+    .join('\n');
+  if (!lines) return;
+  navigator.clipboard.writeText(lines).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+
+function downloadOutput() {
+  if (!convertedResults.length) return;
+  const lines = convertedResults
+    .map(r => r.output || '')
+    .join('\n');
+  const blob = new Blob([lines], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'openathens-urls.txt';
+  a.click();
+}
+</script>
+</body>
+</html>

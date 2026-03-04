@@ -366,7 +366,7 @@ https://www.sciencedirect.com/science/article/..."></textarea>
       <div class="output-header-left">Output</div>
       <div class="output-actions">
         <button class="btn-copy" onclick="copyOutput()">Copy URLs</button>
-        <button class="btn-dl" onclick="downloadOutput()">Download .txt</button>
+        <button class="btn-dl" onclick="downloadOutput()">Download .csv</button>
       </div>
     </div>
 
@@ -538,7 +538,13 @@ function cleanEzproxyUrl(raw) {
     }
   }
 
-  // 6. Final sanity check — still not a resolvable URL?
+  // 6. Handle bare DOI (e.g. 10.1080/... without https://doi.org/ prefix)
+  if (url.match(/^10\.\d{4,}\//)) {
+    url = 'https://doi.org/' + url;
+    notes.push('Bare DOI — prefixed with https://doi.org/');
+  }
+
+  // 7. Final sanity check — still not a resolvable URL?
   if (!url.match(/^https?:\/\/[a-z0-9]/i)) {
     throw { skip: true, reason: 'Could not extract a valid URL after processing' };
   }
@@ -662,15 +668,29 @@ function copyOutput() {
   });
 }
 
+function csvEscape(val) {
+  if (!val) return '';
+  // Quote the field if it contains a comma, quote, or newline
+  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+    return '"' + val.replace(/"/g, '""') + '"';
+  }
+  return val;
+}
+
 function downloadOutput() {
   if (!convertedResults.length) return;
-  const lines = convertedResults
-    .map(r => r.output || '')
-    .join('\n');
-  const blob = new Blob([lines], { type: 'text/plain' });
+  const rows = [['source_url', 'converted_url', 'notes']];
+  convertedResults.forEach(r => {
+    const source = r.input || '';
+    const converted = r.output || '';
+    const notes = (r.notes && r.notes.length) ? r.notes.join('; ') : (r.type === 'skip' ? '' : '');
+    rows.push([csvEscape(source), csvEscape(converted), csvEscape(notes)]);
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'openathens-urls.txt';
+  a.download = 'openathens-urls.csv';
   a.click();
 }
 </script>

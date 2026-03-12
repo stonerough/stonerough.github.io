@@ -41,13 +41,12 @@ def clean_ezproxy_url(raw: str) -> tuple[str, list[str]]:
     url = raw.strip()
     notes = []
 
-    # 1. Strip trailing &amp or &amp; (HTML entity bleed, truncated query string)
-    if url.endswith("&amp;"):
-        url = url[:-5]
-        notes.append("Truncated &amp; stripped — query string may be incomplete")
-    elif url.endswith("&amp"):
-        url = url[:-4]
-        notes.append("Truncated &amp stripped — query string may be incomplete")
+    # 1. Decode &amp; / &amp throughout the URL (HTML entity encoding of &)
+    #    These appear when URLs are stored in HTML contexts. Decode to & rather than
+    #    stripping, so that mid-URL parameters are preserved correctly.
+    if "&amp;" in url or url.endswith("&amp"):
+        url = url.replace("&amp;", "&").replace("&amp", "&")
+        notes.append("HTML-encoded ampersands decoded (&amp; to &)")
 
     # 2. Handle Google redirect wrapper: google.com/url?q=<url>
     if re.match(r"^https?://(?:www\.)?google\.com/url\?", url, re.IGNORECASE):

@@ -352,7 +352,7 @@ https://www.sciencedirect.com/science/article/..."></textarea>
           <li><strong>Login wrappers:</strong> strips <code>/login?url=</code> and <code>/login?qurl=</code></li>
           <li><strong>Double-wrapped:</strong> login wrapper pointing at another EZproxy URL — both layers stripped</li>
           <li><strong>Google redirects:</strong> extracts the inner EZproxy URL from <code>google.com/url?q=</code></li>
-          <li><strong>Truncated &amp;amp:</strong> stripped cleanly, URL converted as-is with a warning</li>
+          <li><strong>HTML-encoded ampersands:</strong> <code>&amp;amp;</code> decoded to <code>&amp;</code> throughout the URL, preserving all parameters</li>
           <li><strong>URL-encoded targets:</strong> decoded before conversion</li>
           <li><strong>Broken/unresolvable:</strong> skipped with a note</li>
         </ul>
@@ -366,7 +366,7 @@ https://www.sciencedirect.com/science/article/..."></textarea>
       <div class="output-header-left">Output</div>
       <div class="output-actions">
         <button class="btn-copy" onclick="copyOutput()">Copy URLs</button>
-        <button class="btn-dl" onclick="downloadOutput()">Download .txt</button>
+        <button class="btn-dl" onclick="downloadOutput()">Download .csv</button>
       </div>
     </div>
 
@@ -377,11 +377,34 @@ https://www.sciencedirect.com/science/article/..."></textarea>
       </div>
     </div>
 
-    <div class="summary-bar" id="summary-bar" style="display:none">
-      <div>Total: <span id="s-total">0</span></div>
-      <div>Converted: <span id="s-ok">0</span></div>
-      <div>Warnings: <span id="s-warn">0</span></div>
-      <div>Skipped: <span id="s-skip">0</span></div>
+    <div id="summary-bar" style="display:none;border-top:1px solid #2d3348;padding:16px 24px;font-family:var(--mono);font-size:0.72rem;">
+      <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#6b7494;margin-bottom:10px">Conversion Report</div>
+      <table style="width:100%;border-collapse:collapse;color:#8899cc">
+        <tr style="border-bottom:1px solid #2d3348">
+          <td style="padding:4px 0;color:#6b7494">Converted cleanly</td>
+          <td style="text-align:right;padding:4px 0"><span id="s-ok" style="color:#7dd3a8">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#4a5470" id="s-ok-pct"></td>
+        </tr>
+        <tr style="border-bottom:1px solid #2d3348">
+          <td style="padding:4px 0;color:#6b7494">Converted with warnings</td>
+          <td style="text-align:right;padding:4px 0"><span id="s-warn" style="color:#f0a050">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#4a5470" id="s-warn-pct"></td>
+        </tr>
+        <tr style="border-bottom:1px solid #3d4560">
+          <td style="padding:4px 0;color:#aab8e0;font-weight:600">Total converted</td>
+          <td style="text-align:right;padding:4px 0;color:#aab8e0;font-weight:600"><span id="s-converted">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#6b7494" id="s-converted-pct"></td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0 4px;color:#6b7494">Not converted (skipped)</td>
+          <td style="text-align:right;padding:6px 0 4px"><span id="s-skip" style="color:#e07070">0</span></td>
+          <td style="text-align:right;padding:6px 0 4px 16px;color:#4a5470" id="s-skip-pct"></td>
+        </tr>
+        <tr style="border-top:1px solid #3d4560">
+          <td style="padding:4px 0;color:#aab8e0;font-weight:600">Total processed</td>
+          <td style="text-align:right;padding:4px 0;color:#aab8e0;font-weight:600" colspan="2"><span id="s-total">0</span></td>
+        </tr>
+      </table>
     </div>
   </div>
 </div>
@@ -456,15 +479,11 @@ function cleanEzproxyUrl(raw) {
   let url = raw.trim();
   const notes = [];
 
-  // 1. Strip trailing &amp (HTML entity bleed, truncated query string)
-  if (url.endsWith('&amp')) {
-    url = url.slice(0, -4);
-    notes.push('Truncated &amp stripped — query string may be incomplete');
-  }
-  // Also handle &amp; variant
-  if (url.endsWith('&amp;')) {
-    url = url.slice(0, -5);
-    notes.push('Truncated &amp; stripped — query string may be incomplete');
+  // 1. Decode &amp; / &amp throughout the URL (HTML entity encoding of &)
+  //    Decode to & rather than stripping, so mid-URL parameters are preserved correctly.
+  if (url.includes('&amp;') || url.includes('&amp')) {
+    url = url.replace(/&amp;/g, '&').replace(/&amp/g, '&');
+    notes.push('HTML-encoded ampersands decoded (&amp; → &)');
   }
 
   // 2. Handle Google redirect wrapper: google.com/url?q=<url>
@@ -515,7 +534,13 @@ function cleanEzproxyUrl(raw) {
     }
   }
 
-  // 6. Final sanity check — still not a resolvable URL?
+  // 6. Handle bare DOI (e.g. 10.1080/... without https://doi.org/ prefix)
+  if (url.match(/^10\.\d{4,}\//)) {
+    url = 'https://doi.org/' + url;
+    notes.push('Bare DOI — prefixed with https://doi.org/');
+  }
+
+  // 7. Final sanity check — still not a resolvable URL?
   if (!url.match(/^https?:\/\/[a-z0-9]/i)) {
     throw { skip: true, reason: 'Could not extract a valid URL after processing' };
   }
@@ -605,11 +630,20 @@ function convert() {
     else nSkip++;
   });
 
-  document.getElementById('s-total').textContent = convertedResults.length;
-  document.getElementById('s-ok').textContent = nOk;
-  document.getElementById('s-warn').textContent = nWarn;
-  document.getElementById('s-skip').textContent = nSkip;
-  document.getElementById('summary-bar').style.display = 'flex';
+  const nTotal = convertedResults.length;
+  const nConverted = nOk + nWarn;
+  const pct = (n) => nTotal ? '(' + Math.round(n / nTotal * 100) + '%)' : '';
+
+  document.getElementById('s-total').textContent = nTotal.toLocaleString();
+  document.getElementById('s-ok').textContent = nOk.toLocaleString();
+  document.getElementById('s-ok-pct').textContent = pct(nOk);
+  document.getElementById('s-warn').textContent = nWarn.toLocaleString();
+  document.getElementById('s-warn-pct').textContent = pct(nWarn);
+  document.getElementById('s-converted').textContent = nConverted.toLocaleString();
+  document.getElementById('s-converted-pct').textContent = pct(nConverted);
+  document.getElementById('s-skip').textContent = nSkip.toLocaleString();
+  document.getElementById('s-skip-pct').textContent = pct(nSkip);
+  document.getElementById('summary-bar').style.display = 'block';
 }
 
 function escHtml(s) {
@@ -630,15 +664,29 @@ function copyOutput() {
   });
 }
 
+function csvEscape(val) {
+  if (!val) return '';
+  // Quote the field if it contains a comma, quote, or newline
+  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+    return '"' + val.replace(/"/g, '""') + '"';
+  }
+  return val;
+}
+
 function downloadOutput() {
   if (!convertedResults.length) return;
-  const lines = convertedResults
-    .map(r => r.output || '')
-    .join('\n');
-  const blob = new Blob([lines], { type: 'text/plain' });
+  const rows = [['source_url', 'converted_url', 'notes']];
+  convertedResults.forEach(r => {
+    const source = r.input || '';
+    const converted = r.output || '';
+    const notes = (r.notes && r.notes.length) ? r.notes.join('; ') : (r.type === 'skip' ? '' : '');
+    rows.push([csvEscape(source), csvEscape(converted), csvEscape(notes)]);
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'openathens-urls.txt';
+  a.download = 'openathens-urls.csv';
   a.click();
 }
 </script>

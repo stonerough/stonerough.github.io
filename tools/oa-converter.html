@@ -352,7 +352,7 @@ https://www.sciencedirect.com/science/article/..."></textarea>
           <li><strong>Login wrappers:</strong> strips <code>/login?url=</code> and <code>/login?qurl=</code></li>
           <li><strong>Double-wrapped:</strong> login wrapper pointing at another EZproxy URL — both layers stripped</li>
           <li><strong>Google redirects:</strong> extracts the inner EZproxy URL from <code>google.com/url?q=</code></li>
-          <li><strong>Truncated &amp;amp:</strong> stripped cleanly, URL converted as-is with a warning</li>
+          <li><strong>HTML-encoded ampersands:</strong> <code>&amp;amp;</code> decoded to <code>&amp;</code> throughout the URL, preserving all parameters</li>
           <li><strong>URL-encoded targets:</strong> decoded before conversion</li>
           <li><strong>Broken/unresolvable:</strong> skipped with a note</li>
         </ul>
@@ -479,15 +479,11 @@ function cleanEzproxyUrl(raw) {
   let url = raw.trim();
   const notes = [];
 
-  // 1. Strip trailing &amp (HTML entity bleed, truncated query string)
-  if (url.endsWith('&amp')) {
-    url = url.slice(0, -4);
-    notes.push('Truncated &amp stripped — query string may be incomplete');
-  }
-  // Also handle &amp; variant
-  if (url.endsWith('&amp;')) {
-    url = url.slice(0, -5);
-    notes.push('Truncated &amp; stripped — query string may be incomplete');
+  // 1. Decode &amp; / &amp throughout the URL (HTML entity encoding of &)
+  //    Decode to & rather than stripping, so mid-URL parameters are preserved correctly.
+  if (url.includes('&amp;') || url.includes('&amp')) {
+    url = url.replace(/&amp;/g, '&').replace(/&amp/g, '&');
+    notes.push('HTML-encoded ampersands decoded (&amp; → &)');
   }
 
   // 2. Handle Google redirect wrapper: google.com/url?q=<url>

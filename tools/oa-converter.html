@@ -602,9 +602,14 @@ const VENDOR_TABLE = [
 ];
 
 // Look up a vendor URL against the confirmed entry point table.
-// Returns { name, url } or null.
+// Returns { name, url, deepLinkable } or null.
+// deepLinkable: true if the vendor uses the standard go.openathens.net redirector,
+// meaning a deep content URL can be wrapped directly.
+// false for vendors with custom SAML/non-standard entry points where deep linking
+// via the standard redirector won't work (Kanopy, LexisNexis, ASTM etc.)
 function lookupVendor(url) {
   const lower = url.toLowerCase();
+  const OA_REDIRECTOR = 'https://go.openathens.net/redirector/waikato.ac.nz?url=';
   // plants.jstor.org must be checked before jstor.org
   const sorted = [...VENDOR_TABLE].sort((a, b) => {
     const aMax = Math.max(...a.domains.map(d => d.length));
@@ -614,7 +619,11 @@ function lookupVendor(url) {
   for (const entry of sorted) {
     for (const domain of entry.domains) {
       if (lower.includes(domain.toLowerCase())) {
-        return { name: entry.name, url: entry.url };
+        return {
+          name: entry.name,
+          url: entry.url,
+          deepLinkable: entry.url.startsWith(OA_REDIRECTOR)
+        };
       }
     }
   }
@@ -740,6 +749,16 @@ function cleanEzproxyUrl(raw) {
     }
   }
 
+  // Strip old-style OpenAthens proxy subdomain: vendor.ap1.proxy.openathens.net
+  const oaProxyMatch = url.match(/^(https?:\/\/)((?:[\w]+-)*[\w]+)\.ap\d*\.proxy\.openathens\.net(\/.*)?$/i);
+  if (oaProxyMatch) {
+    const proxiedHost = oaProxyMatch[2];
+    const path = oaProxyMatch[3] || '/';
+    const realHost = proxiedHost.replace(/-/g, '.');
+    url = 'https://' + realHost + path;
+    notes.push('OA proxy subdomain stripped: ' + proxiedHost + ' \u2192 ' + realHost);
+  }
+
   if (url.match(/^10\.\d{4,}\//)) {
     url = 'https://doi.org/' + url;
     notes.push('Bare DOI — prefixed with https://doi.org/');
@@ -780,8 +799,13 @@ function repairOaUrl(raw) {
 
       const match = lookupVendor(vendorUrl);
       if (match) {
-        notes.push('Vendor recognised: ' + match.name + ' — confirmed entry point substituted');
-        return { type: 'repair', output: match.url, notes };
+        if (match.deepLinkable) {
+          notes.push('Vendor recognised: ' + match.name + ' — deep link wrapped in OA redirector');
+          return { type: 'repair', output: toOpenAthens(vendorUrl), notes };
+        } else {
+          notes.push('Vendor recognised: ' + match.name + ' — uses custom auth, entry point substituted');
+          return { type: 'repair', output: match.url, notes };
+        }
       } else {
         repairedUrl = toOpenAthens(vendorUrl);
         notes.push('Vendor not in confirmed table — standard redirector URL constructed');
@@ -848,8 +872,13 @@ function repairOaUrl(raw) {
   if (input.match(/^https?:\/\//i)) {
     const match = lookupVendor(input);
     if (match) {
-      notes.push('Not an OA URL — vendor recognised: ' + match.name + ' — confirmed entry point used');
-      return { type: 'repair', output: match.url, notes };
+      if (match.deepLinkable) {
+        notes.push('Not an OA URL — vendor recognised: ' + match.name + ' — deep link wrapped in OA redirector');
+        return { type: 'repair', output: toOpenAthens(input), notes };
+      } else {
+        notes.push('Not an OA URL — vendor recognised: ' + match.name + ' — uses custom auth, entry point substituted');
+        return { type: 'repair', output: match.url, notes };
+      }
     }
     notes.push('Not an OA URL — wrapped in standard redirector');
     return { type: 'repair', output: toOpenAthens(input), notes };
@@ -875,7 +904,15 @@ function convertLine(raw) {
     // Table lookup first
     const match = lookupVendor(input);
     if (match) {
-      return { type: 'confirmed', input, output: match.url, notes: ['Confirmed entry point: ' + match.name] };
+      if (match.deepLinkable) {
+        // Wrap the deep content URL directly — preserve the path for reading lists
+        return { type: 'confirmed', input, output: toOpenAthens(input),
+          notes: ['Vendor confirmed (' + match.name + ') — deep link wrapped in OA redirector'] };
+      } else {
+        // Non-redirector vendor (custom SAML etc.) — deep linking not supported
+        return { type: 'confirmed', input, output: match.url,
+          notes: ['Vendor confirmed (' + match.name + ') — uses custom auth, deep linking not supported; entry point URL used'] };
+      }
     }
     return { type: 'ok', input, output: toOpenAthens(input), notes: [] };
   }
@@ -887,7 +924,15 @@ function convertLine(raw) {
     const match = lookupVendor(url);
     if (match) {
       const unusualNotes = notes.filter(n => !n.startsWith('Proxied hostname restored'));
-      return { type: 'confirmed', input, output: match.url, notes: [...unusualNotes, 'Confirmed entry point: ' + match.name] };
+      if (match.deepLinkable) {
+        // Wrap the cleaned deep content URL — preserve path for reading lists
+        return { type: 'confirmed', input, output: toOpenAthens(url),
+          notes: [...unusualNotes, 'Vendor confirmed (' + match.name + ') — deep link wrapped in OA redirector'] };
+      } else {
+        // Non-redirector vendor — use confirmed entry point, note deep linking not supported
+        return { type: 'confirmed', input, output: match.url,
+          notes: [...unusualNotes, 'Vendor confirmed (' + match.name + ') — uses custom auth, deep linking not supported; entry point URL used'] };
+      }
     }
     const output = toOpenAthens(url);
     const unusualNotes = notes.filter(n => !n.startsWith('Proxied hostname restored'));

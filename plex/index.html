@@ -2,92 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="0; url=https://plex.tail99c4c.ts.net">
   <title>Redirecting to Plex...</title>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      max-width: 600px;
-      margin: 100px auto;
-      text-align: center;
-      padding: 20px;
-    }
-    .spinner {
-      display: inline-block;
-      width: 40px;
-      height: 40px;
-      border: 4px solid #ccc;
-      border-top-color: #e5a00d;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 20px 0;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  </style>
 </head>
 <body>
-  <div class="spinner"></div>
-  <p>Detecting your network to find the best Plex server address...</p>
-
-  <script>
-    // Base URLs (without paths, for testing)
-    const LOCAL_BASE = "http://192.168.0.236:32400";
-    const TAILNET_BASE = "http://plex.tail99c4c.ts.net:32400";
-    const FUNNEL_BASE = "https://plex.tail99c4c.ts.net";
-
-    // Full redirect URLs
-    const LOCAL_URL = LOCAL_BASE + "/web/index.html#!/";
-    const TAILNET_URL = TAILNET_BASE + "/web/index.html#!/";
-    const FUNNEL_URL = FUNNEL_BASE;  // Simpler, works as you confirmed
-
-    function redirectTo(url) {
-      window.location.replace(url);
-    }
-
-    // Test reachability using favicon.ico at the base path
-    function testUrl(baseUrl, timeoutMs, callback) {
-      var img = new Image();
-      var timedOut = false;
-      var testUrl = baseUrl + "/web/favicon.ico";
-      var timer = setTimeout(function() {
-        timedOut = true;
-        img.src = "";
-        callback(false);
-      }, timeoutMs);
-
-      img.onload = function() {
-        if (!timedOut) {
-          clearTimeout(timer);
-          callback(true);
-        }
-      };
-      img.onerror = function() {
-        if (!timedOut) {
-          clearTimeout(timer);
-          callback(true);  // Server responded (even 404) → reachable
-        }
-      };
-
-      img.src = testUrl + "?t=" + new Date().getTime();
-    }
-
-    // Cascade: local first (2s), then tailnet (3s), then funnel (always)
-    testUrl(LOCAL_BASE, 2000, function(localReachable) {
-      if (localReachable) {
-        redirectTo(LOCAL_URL);
-        return;
-      }
-
-      testUrl(TAILNET_BASE, 3000, function(tailnetReachable) {
-        if (tailnetReachable) {
-          redirectTo(TAILNET_URL);
-          return;
-        }
-
-        redirectTo(FUNNEL_URL);
-      });
-    });
-  </script>
+  <p>Redirecting to Plex... <a href="https://plex.tail99c4c.ts.net">Click here if you are not redirected.</a></p>
 </body>
 </html>

@@ -3,23 +3,53 @@
 <head>
   <meta charset="UTF-8">
   <title>Redirecting to Plex...</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 100px auto;
+      text-align: center;
+      padding: 20px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid #ccc;
+      border-top-color: #e5a00d;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 20px 0;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
+  <div class="spinner"></div>
   <p>Detecting your network to find the best Plex server address...</p>
 
   <script>
-    const LOCAL_URL = "http://192.168.0.236:32400/web/index.html#!/";
-    const TAILNET_URL = "http://plex.tail99c4c.ts.net:32400/web/index.html#!/";
-    const FUNNEL_URL = "https://plex.tail99c4c.ts.net/web/index.html#!/";
+    // Base URLs (without paths, for testing)
+    const LOCAL_BASE = "http://192.168.0.236:32400";
+    const TAILNET_BASE = "http://plex.tail99c4c.ts.net:32400";
+    const FUNNEL_BASE = "https://plex.tail99c4c.ts.net";
+
+    // Full redirect URLs
+    const LOCAL_URL = LOCAL_BASE + "/web/index.html#!/";
+    const TAILNET_URL = TAILNET_BASE + "/web/index.html#!/";
+    const FUNNEL_URL = FUNNEL_BASE;  // Simpler, works as you confirmed
 
     function redirectTo(url) {
       window.location.replace(url);
     }
 
-    // Use an Image load to test reachability - works on all browsers including old iOS
-    function testUrl(url, timeoutMs, callback) {
+    // Test reachability using favicon.ico at the base path
+    function testUrl(baseUrl, timeoutMs, callback) {
       var img = new Image();
       var timedOut = false;
+      var testUrl = baseUrl + "/web/favicon.ico";
       var timer = setTimeout(function() {
         timedOut = true;
         img.src = "";
@@ -35,22 +65,21 @@
       img.onerror = function() {
         if (!timedOut) {
           clearTimeout(timer);
-          callback(true);  // onerror means the server responded (even 404) - still reachable
+          callback(true);  // Server responded (even 404) → reachable
         }
       };
 
-      // Append a cache-buster so we don't get cached results
-      img.src = url + "?t=" + new Date().getTime();
+      img.src = testUrl + "?t=" + new Date().getTime();
     }
 
-    // Try local first (short timeout), then tailnet, then funnel
-    testUrl("http://192.168.0.236:32400/web/favicon.ico", 2000, function(localReachable) {
+    // Cascade: local first (2s), then tailnet (3s), then funnel (always)
+    testUrl(LOCAL_BASE, 2000, function(localReachable) {
       if (localReachable) {
         redirectTo(LOCAL_URL);
         return;
       }
 
-      testUrl("http://plex.tail99c4c.ts.net:32400/web/favicon.ico", 3000, function(tailnetReachable) {
+      testUrl(TAILNET_BASE, 3000, function(tailnetReachable) {
         if (tailnetReachable) {
           redirectTo(TAILNET_URL);
           return;

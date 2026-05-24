@@ -8,7 +8,6 @@
   <p>Detecting your network to find the best Plex server address...</p>
 
   <script>
-    // URLs in priority order: local first, then tailnet, then funnel
     const LOCAL_URL = "http://192.168.0.236:32400/web/index.html#!/";
     const TAILNET_URL = "http://plex.tail99c4c.ts.net:32400/web/index.html#!/";
     const FUNNEL_URL = "https://plex.tail99c4c.ts.net/web/index.html#!/";
@@ -17,43 +16,49 @@
       window.location.replace(url);
     }
 
-    // Try local first: quick fetch to local Plex server
-    function tryLocal() {
-      return fetch("http://192.168.0.236:32400/identity", { mode: "no-cors", signal: AbortSignal.timeout(2000) })
-        .then(() => true)
-        .catch(() => false);
+    // Use an Image load to test reachability - works on all browsers including old iOS
+    function testUrl(url, timeoutMs, callback) {
+      var img = new Image();
+      var timedOut = false;
+      var timer = setTimeout(function() {
+        timedOut = true;
+        img.src = "";
+        callback(false);
+      }, timeoutMs);
+
+      img.onload = function() {
+        if (!timedOut) {
+          clearTimeout(timer);
+          callback(true);
+        }
+      };
+      img.onerror = function() {
+        if (!timedOut) {
+          clearTimeout(timer);
+          callback(true);  // onerror means the server responded (even 404) - still reachable
+        }
+      };
+
+      // Append a cache-buster so we don't get cached results
+      img.src = url + "?t=" + new Date().getTime();
     }
 
-    // Try tailnet: fetch via Tailscale MagicDNS on port 32400
-    function tryTailnet() {
-      return fetch("http://plex.tail99c4c.ts.net:32400/identity", { mode: "no-cors", signal: AbortSignal.timeout(3000) })
-        .then(() => true)
-        .catch(() => false);
-    }
-
-    async function determineBestUrl() {
-      // 1. Check local
-      const localReachable = await tryLocal();
+    // Try local first (short timeout), then tailnet, then funnel
+    testUrl("http://192.168.0.236:32400/web/favicon.ico", 2000, function(localReachable) {
       if (localReachable) {
-        console.log("Local Plex detected, redirecting to local address");
         redirectTo(LOCAL_URL);
         return;
       }
 
-      // 2. Check tailnet
-      const tailnetReachable = await tryTailnet();
-      if (tailnetReachable) {
-        console.log("Tailnet Plex detected, redirecting to tailnet address");
-        redirectTo(TAILNET_URL);
-        return;
-      }
+      testUrl("http://plex.tail99c4c.ts.net:32400/web/favicon.ico", 3000, function(tailnetReachable) {
+        if (tailnetReachable) {
+          redirectTo(TAILNET_URL);
+          return;
+        }
 
-      // 3. Fallback to funnel
-      console.log("Neither local nor tailnet detected, using funnel");
-      redirectTo(FUNNEL_URL);
-    }
-
-    determineBestUrl();
+        redirectTo(FUNNEL_URL);
+      });
+    });
   </script>
 </body>
 </html>

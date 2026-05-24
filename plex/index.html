@@ -3,13 +3,57 @@
 <head>
   <meta charset="UTF-8">
   <title>Redirecting to Plex...</title>
-  <meta http-equiv="refresh" content="0; url=https://plex.tail99c4c.ts.net/web/index.html#!/">
-  <script>
-    window.location.replace("https://plex.tail99c4c.ts.net/web/index.html#!/");
-  </script>
 </head>
 <body>
-  <p>Redirecting to <a href="https://plex.tail99c4c.ts.net/web/index.html#!/">Plex</a>...</p>
+  <p>Detecting your network to find the best Plex server address...</p>
+
+  <script>
+    // URLs in priority order: local first, then tailnet, then funnel
+    const LOCAL_URL = "http://192.168.0.236:32400/web/index.html#!/";
+    const TAILNET_URL = "http://plex.tail99c4c.ts.net:32400/web/index.html#!/";
+    const FUNNEL_URL = "https://plex.tail99c4c.ts.net/web/index.html#!/";
+
+    function redirectTo(url) {
+      window.location.replace(url);
+    }
+
+    // Try local first: quick fetch to local Plex server
+    function tryLocal() {
+      return fetch("http://192.168.0.236:32400/identity", { mode: "no-cors", signal: AbortSignal.timeout(2000) })
+        .then(() => true)
+        .catch(() => false);
+    }
+
+    // Try tailnet: fetch via Tailscale MagicDNS on port 32400
+    function tryTailnet() {
+      return fetch("http://plex.tail99c4c.ts.net:32400/identity", { mode: "no-cors", signal: AbortSignal.timeout(3000) })
+        .then(() => true)
+        .catch(() => false);
+    }
+
+    async function determineBestUrl() {
+      // 1. Check local
+      const localReachable = await tryLocal();
+      if (localReachable) {
+        console.log("Local Plex detected, redirecting to local address");
+        redirectTo(LOCAL_URL);
+        return;
+      }
+
+      // 2. Check tailnet
+      const tailnetReachable = await tryTailnet();
+      if (tailnetReachable) {
+        console.log("Tailnet Plex detected, redirecting to tailnet address");
+        redirectTo(TAILNET_URL);
+        return;
+      }
+
+      // 3. Fallback to funnel
+      console.log("Neither local nor tailnet detected, using funnel");
+      redirectTo(FUNNEL_URL);
+    }
+
+    determineBestUrl();
+  </script>
 </body>
 </html>
-

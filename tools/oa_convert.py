@@ -335,6 +335,79 @@ _SORTED_TABLE = sorted(
 )
 
 
+# ---------------------------------------------------------------------------
+# Vendors that must NOT be converted to OpenAthens.
+# These remain on their existing SSO or other access mechanisms.
+# Each entry: (domains_list, vendor_name, reason)
+# ---------------------------------------------------------------------------
+SKIP_VENDORS = [
+    (
+        ["westlaw.com", "nzlaw.thomsonreuters.com", "signon.thomsonreuters.com"],
+        "Westlaw (Thomson Reuters)",
+        "Custom SAML via REANZ Tuakiri SSO — not managed via OpenAthens"
+    ),
+    (
+        ["timeshighereducation.com"],
+        "Times Higher Education",
+        "Incompatible vendor — access via email domain registration only"
+    ),
+    (
+        ["journalsurf.co.nz"],
+        "Learning Focus / Journal Surf",
+        "Incompatible vendor — shared username/password only"
+    ),
+    (
+        ["antarcticsociety.org.nz"],
+        "NZ Antarctic Society",
+        "Incompatible vendor — shared username/password only"
+    ),
+    (
+        ["nbr.co.nz"],
+        "National Business Review",
+        "Incompatible vendor — student domain access, staff individual licences"
+    ),
+    (
+        ["app.disabilitybusters.com"],
+        "Disability Busters",
+        "Not required — domain account self-registration only"
+    ),
+    (
+        ["pocketmags.com"],
+        "Pocketmags",
+        "Not required — current access via username/password"
+    ),
+    (
+        ["journals.aom.org", "aom.org"],
+        "Academy of Management",
+        "Not required — OpenAthens setup incomplete"
+    ),
+    (
+        ["tradelawguide.com"],
+        "Trade Law Guide",
+        "Not required — vendor must add OA proxy IP before activation"
+    ),
+]
+
+_SORTED_SKIP = sorted(
+    SKIP_VENDORS,
+    key=lambda e: max(len(d) for d in e[0]),
+    reverse=True
+)
+
+
+def lookup_skip_vendor(url: str) -> tuple[str, str] | None:
+    """
+    Match a URL against the skip-vendor table.
+    Returns (vendor_name, reason) or None.
+    """
+    lower = url.lower()
+    for domains, name, reason in _SORTED_SKIP:
+        for domain in domains:
+            if domain.lower() in lower:
+                return (name, reason)
+    return None
+
+
 def lookup_vendor(url: str) -> tuple[str, str] | None:
     """
     Match a URL against the vendor table.
@@ -471,6 +544,11 @@ def repair_oa_url(raw: str) -> tuple[str, str, list[str]]:
                 f"Old-style OA proxy subdomain — vendor host restored: "
                 f"{proxied_host} -> {real_host}"
             )
+            skip_match = lookup_skip_vendor(vendor_url)
+            if skip_match:
+                name, reason = skip_match
+                notes.append(f"{name}: {reason}")
+                return ("skip", "", notes)
             match = lookup_vendor(vendor_url)
             if match:
                 name, oa_url = match
@@ -503,6 +581,13 @@ def repair_oa_url(raw: str) -> tuple[str, str, list[str]]:
             notes.append(f"url= parameter does not contain a valid URL: {url_param}")
             return ("skip", "", notes)
 
+        # Check if the extracted vendor URL is on the skip list
+        skip_match = lookup_skip_vendor(url_param)
+        if skip_match:
+            name, reason = skip_match
+            notes.append(f"{name}: {reason}")
+            return ("skip", "", notes)
+
         # Check institution scope
         scope_match = re.search(r"redirector/([^?/]+)", url, re.IGNORECASE)
         if scope_match and scope_match.group(1) != OA_SCOPE:
@@ -529,6 +614,11 @@ def repair_oa_url(raw: str) -> tuple[str, str, list[str]]:
 
     # Not an OA URL — treat as plain vendor URL needing conversion
     if re.match(r"^https?://", url, re.IGNORECASE):
+        skip_match = lookup_skip_vendor(url)
+        if skip_match:
+            name, reason = skip_match
+            notes.append(f"{name}: {reason}")
+            return ("skip", "", notes)
         match = lookup_vendor(url)
         if match:
             name, oa_url = match
@@ -565,6 +655,10 @@ def convert_line(
     if plain_mode:
         if not re.match(r"^https?://", source, re.IGNORECASE):
             return (source, "", "skip", "Does not start with http:// or https://")
+        skip_match = lookup_skip_vendor(source)
+        if skip_match:
+            name, reason = skip_match
+            return (source, "", "skip", f"{name}: {reason}")
         match = lookup_vendor(source)
         if match:
             name, oa_url = match
@@ -574,6 +668,10 @@ def convert_line(
     # EZproxy mode
     try:
         cleaned, notes = clean_ezproxy_url(source)
+        skip_match = lookup_skip_vendor(cleaned)
+        if skip_match:
+            name, reason = skip_match
+            return (source, "", "skip", f"{name}: {reason}")
         match = lookup_vendor(cleaned)
         if match:
             name, oa_url = match

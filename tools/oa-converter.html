@@ -392,6 +392,15 @@ https://www.sciencedirect.com/science/article/..."></textarea>
           </ul>
         </div>
 
+        <div class="mode-section">
+          <div class="mode-title">Skip-listed vendors</div>
+          <ul>
+            <li>Some vendors cannot use OpenAthens and are flagged as <strong>SKIP</strong> rather than converted</li>
+            <li>Includes Westlaw (REANZ Tuakiri SSO), incompatible vendors (Times Higher Education, NBR, Journal Surf, NZ Antarctic Society), and vendors with incomplete or deferred OA setup (Academy of Management, Trade Law Guide, Pocketmags, Disability Busters)</li>
+            <li>The notes column explains why each was skipped</li>
+          </ul>
+        </div>
+
       </div>
     </details>
   </div>
@@ -630,6 +639,57 @@ function lookupVendor(url) {
   return null;
 }
 
+// ---- Vendors that must NOT be converted to OpenAthens ----
+// These remain on their existing SSO or other access mechanisms.
+const SKIP_VENDORS = [
+  { domains: ['westlaw.com', 'nzlaw.thomsonreuters.com', 'signon.thomsonreuters.com'],
+    name: 'Westlaw (Thomson Reuters)',
+    reason: 'Custom SAML via REANZ Tuakiri SSO — not managed via OpenAthens' },
+  { domains: ['timeshighereducation.com'],
+    name: 'Times Higher Education',
+    reason: 'Incompatible vendor — access via email domain registration only' },
+  { domains: ['journalsurf.co.nz'],
+    name: 'Learning Focus / Journal Surf',
+    reason: 'Incompatible vendor — shared username/password only' },
+  { domains: ['antarcticsociety.org.nz'],
+    name: 'NZ Antarctic Society',
+    reason: 'Incompatible vendor — shared username/password only' },
+  { domains: ['nbr.co.nz'],
+    name: 'National Business Review',
+    reason: 'Incompatible vendor — student domain access, staff individual licences' },
+  { domains: ['app.disabilitybusters.com'],
+    name: 'Disability Busters',
+    reason: 'Not required — domain account self-registration only' },
+  { domains: ['pocketmags.com'],
+    name: 'Pocketmags',
+    reason: 'Not required — current access via username/password' },
+  { domains: ['journals.aom.org', 'aom.org'],
+    name: 'Academy of Management',
+    reason: 'Not required — OpenAthens setup incomplete' },
+  { domains: ['tradelawguide.com'],
+    name: 'Trade Law Guide',
+    reason: 'Not required — vendor must add OA proxy IP before activation' },
+];
+
+// Look up a URL against the skip-vendor table.
+// Returns { name, reason } or null.
+function lookupSkipVendor(url) {
+  const lower = url.toLowerCase();
+  const sorted = [...SKIP_VENDORS].sort((a, b) => {
+    const aMax = Math.max(...a.domains.map(d => d.length));
+    const bMax = Math.max(...b.domains.map(d => d.length));
+    return bMax - aMax;
+  });
+  for (const entry of sorted) {
+    for (const domain of entry.domains) {
+      if (lower.includes(domain.toLowerCase())) {
+        return { name: entry.name, reason: entry.reason };
+      }
+    }
+  }
+  return null;
+}
+
 // ---- Mode management ----
 function setMode(mode, el) {
   currentMode = mode;
@@ -797,6 +857,11 @@ function repairOaUrl(raw) {
       const vendorUrl = 'https://' + realHost + path;
       notes.push('Old-style OA proxy subdomain — vendor host restored: ' + proxiedHost + ' → ' + realHost);
 
+      const skipMatch = lookupSkipVendor(vendorUrl);
+      if (skipMatch) {
+        notes.push(skipMatch.name + ': ' + skipMatch.reason);
+        return { type: 'skip', output: null, notes };
+      }
       const match = lookupVendor(vendorUrl);
       if (match) {
         if (match.deepLinkable) {
@@ -849,6 +914,13 @@ function repairOaUrl(raw) {
       return { type: 'skip', output: null, notes };
     }
 
+    // Skip-vendor check on the extracted target URL
+    const skipMatch = lookupSkipVendor(urlParam);
+    if (skipMatch) {
+      notes.push(skipMatch.name + ': ' + skipMatch.reason);
+      return { type: 'skip', output: null, notes };
+    }
+
     // Now look up the vendor in the table
     const match = lookupVendor(urlParam);
     if (match) {
@@ -870,6 +942,11 @@ function repairOaUrl(raw) {
 
   // Not an OA URL at all — treat as plain URL needing conversion
   if (input.match(/^https?:\/\//i)) {
+    const skipMatch = lookupSkipVendor(input);
+    if (skipMatch) {
+      notes.push(skipMatch.name + ': ' + skipMatch.reason);
+      return { type: 'skip', output: null, notes };
+    }
     const match = lookupVendor(input);
     if (match) {
       if (match.deepLinkable) {
@@ -901,6 +978,11 @@ function convertLine(raw) {
     if (!input.match(/^https?:\/\//i)) {
       return { type: 'skip', input, output: null, notes: ['Does not start with http:// or https://'] };
     }
+    // Skip-vendor check before any conversion attempt
+    const skipMatch = lookupSkipVendor(input);
+    if (skipMatch) {
+      return { type: 'skip', input, output: null, notes: [skipMatch.name + ': ' + skipMatch.reason] };
+    }
     // Table lookup first
     const match = lookupVendor(input);
     if (match) {
@@ -920,6 +1002,11 @@ function convertLine(raw) {
   // EZproxy mode
   try {
     const { url, notes } = cleanEzproxyUrl(input);
+    // Skip-vendor check before any conversion attempt
+    const skipMatch = lookupSkipVendor(url);
+    if (skipMatch) {
+      return { type: 'skip', input, output: null, notes: [skipMatch.name + ': ' + skipMatch.reason] };
+    }
     // Table lookup on the cleaned URL
     const match = lookupVendor(url);
     if (match) {

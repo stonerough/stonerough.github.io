@@ -342,7 +342,7 @@ _SORTED_TABLE = sorted(
 # ---------------------------------------------------------------------------
 SKIP_VENDORS = [
     (
-        ["westlaw.com", "nzlaw.thomsonreuters.com", "signon.thomsonreuters.com"],
+        ["westlaw.com", "westlaw.co.nz", "nzlaw.thomsonreuters.com", "signon.thomsonreuters.com"],
         "Westlaw (Thomson Reuters)",
         "Custom SAML via REANZ Tuakiri SSO — not managed via OpenAthens"
     ),

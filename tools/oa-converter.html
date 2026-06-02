@@ -321,6 +321,7 @@
         <button class="mode-tab active" data-mode="ezproxy" onclick="setMode('ezproxy', this)">EZproxy → OpenAthens</button>
         <button class="mode-tab" data-mode="plain" onclick="setMode('plain', this)">Plain URL → OpenAthens</button>
         <button class="mode-tab" data-mode="repair" onclick="setMode('repair', this)">Repair broken OA link</button>
+        <button class="mode-tab" data-mode="strip" onclick="setMode('strip', this)">Strip to vendor URL</button>
       </div>
     </div>
 
@@ -384,6 +385,17 @@ https://www.sciencedirect.com/science/article/..."></textarea>
         </div>
 
         <div class="mode-section">
+          <div class="mode-title">Strip to vendor URL</div>
+          <ul>
+            <li>Removes all proxy and OpenAthens wrapping to recover the bare vendor URL</li>
+            <li>Handles <code>go.openathens.net</code> redirector URLs, <code>proxy.openathens.net</code> login URLs, EZproxy login wrappers, and proxied hostnames</li>
+            <li>Returns a clean <code>https://vendor.com/...</code> URL you can visit directly to test SP-initiated ("Sign in via your institution") SAML flows</li>
+            <li>Identifies the vendor by name from the confirmed entry point table where possible</li>
+            <li>Useful for triage: confirms whether an issue is at the vendor WAYF / SP side rather than the OA redirector</li>
+          </ul>
+        </div>
+
+        <div class="mode-section">
           <div class="mode-title">Confirmed entry point table</div>
           <ul>
             <li>107 University of Waikato vendors with confirmed, tested OpenAthens URLs</li>
@@ -418,7 +430,7 @@ https://www.sciencedirect.com/science/article/..."></textarea>
     <div id="output-area">
       <div class="output-placeholder">
         Converted URLs will appear here.<br>
-        <span style="font-size:0.7rem">Blue = confirmed entry point · Green = converted · Orange = converted with warning · Purple = repaired · Red = skipped</span>
+        <span style="font-size:0.7rem">Blue = confirmed entry point · Green = converted / stripped · Orange = converted with warning · Purple = repaired · Red = skipped</span>
       </div>
     </div>
 
@@ -708,6 +720,10 @@ function setMode(mode, el) {
     ta.placeholder = 'Paste plain vendor URLs here, one per line.\nExamples:\nhttps://www.sciencedirect.com/science/article/...\nhttps://onlinelibrary.wiley.com/doi/...';
     label.textContent = 'Input — one URL per line';
     batchLabel.textContent = 'Max 2,000 URLs per batch';
+  } else if (mode === 'strip') {
+    ta.placeholder = 'Paste proxied or wrapped URLs to strip back to the vendor site.\nExamples:\nhttps://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.taylorfrancis.com%2Fbooks%2F...\nhttps://ezproxy.waikato.ac.nz/login?url=https%3A%2F%2Fwww.taylorfrancis.com%2F...\nhttps://taylorfrancis-com.ezproxy.waikato.ac.nz/books/...';
+    label.textContent = 'Input — one URL per line';
+    batchLabel.textContent = 'Max 200 URLs per batch';
   } else {
     ta.placeholder = 'Paste URLs here, one per line.\nExamples:\nhttps://link-springer-com.ezproxy.waikato.ac.nz/article/...\nhttps://ezproxy.waikato.ac.nz/login?qurl=https%3A%2F%2F...\nhttps://www.sciencedirect.com/science/article/...';
     label.textContent = 'Input — one URL per line';
@@ -964,6 +980,104 @@ function repairOaUrl(raw) {
   return { type: 'skip', output: null, notes: ['Does not appear to be a valid URL'] };
 }
 
+// ---- Strip to vendor URL ----
+// Removes all proxy/OA wrapping and returns the bare vendor URL.
+// Useful for SP-initiated SAML triage: visit the result and use
+// "Sign in via your institution" to test the vendor WAYF / SP flow directly.
+function stripToVendorUrl(raw) {
+  const notes = [];
+  let url = raw.trim();
+
+  if (!url.match(/^https?:\/\//i)) {
+    return { type: 'skip', output: null, notes: ['Does not appear to be a valid URL'] };
+  }
+
+  // 1. Unwrap go.openathens.net redirector
+  //    https://go.openathens.net/redirector/...?url=<encoded>
+  const goOaMatch = url.match(/^https?:\/\/go\.openathens\.net\/redirector\/[^?]+\?.*[?&]url=([^&]+)/i);
+  if (goOaMatch) {
+    try {
+      url = decodeURIComponent(goOaMatch[1]);
+      notes.push('OpenAthens redirector wrapper removed');
+    } catch(e) {
+      return { type: 'skip', output: null, notes: ['Could not decode url= parameter: ' + goOaMatch[1]] };
+    }
+  }
+
+  // 2. Unwrap proxy.openathens.net login
+  //    https://proxy.openathens.net/login?qurl=<encoded>&entityID=...
+  const proxyOaMatch = url.match(/^https?:\/\/proxy\.openathens\.net\/login\?.*[?&]qurl=([^&]+)/i);
+  if (proxyOaMatch) {
+    try {
+      url = decodeURIComponent(proxyOaMatch[1]);
+      notes.push('OpenAthens proxy login wrapper removed');
+    } catch(e) {
+      return { type: 'skip', output: null, notes: ['Could not decode qurl= parameter'] };
+    }
+  }
+
+  // 3. Unwrap EZproxy login wrapper
+  //    https://ezproxy.waikato.ac.nz/login?url=<encoded>  or  ?qurl=<encoded>
+  const ezLoginMatch = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?.*[?&](?:url|qurl)=([^&]+)/i);
+  if (ezLoginMatch) {
+    try {
+      url = decodeURIComponent(ezLoginMatch[1]);
+      notes.push('EZproxy login wrapper removed');
+    } catch(e) {
+      return { type: 'skip', output: null, notes: ['Could not decode EZproxy url/qurl parameter'] };
+    }
+    // May be double-wrapped — check if result is itself an EZproxy URL
+    const inner = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?.*[?&](?:url|qurl)=([^&]+)/i);
+    if (inner) {
+      try {
+        url = decodeURIComponent(inner[1]);
+        notes.push('Double EZproxy wrapper detected — inner layer also removed');
+      } catch(e) { /* leave as-is */ }
+    }
+  }
+
+  // 4. Unwrap EZproxy proxied hostname
+  //    https://vendor-host.ezproxy.waikato.ac.nz/path
+  //    Restore to https://vendor.host/path
+  const proxyHostMatch = url.match(/^(https?:\/\/)([^/]+)\.ezproxy\.waikato\.ac\.nz(\/.*)?$/i);
+  if (proxyHostMatch) {
+    const restoredHost = proxyHostMatch[2].replace(/-/g, '.');
+    url = proxyHostMatch[1] + restoredHost + (proxyHostMatch[3] || '');
+    notes.push('EZproxy proxied hostname restored: ' + proxyHostMatch[2] + '.ezproxy.waikato.ac.nz → ' + restoredHost);
+  }
+
+  // 5. Validate result looks like a real URL
+  if (!url.match(/^https?:\/\/.+\..+/i)) {
+    return { type: 'skip', output: null, notes: [...notes, 'Result does not look like a valid vendor URL: ' + url] };
+  }
+
+  // 6. Identify vendor from table
+  const vendorMatch = lookupVendor(url);
+  if (vendorMatch) {
+    notes.push('Vendor identified: ' + vendorMatch.name);
+    // Special note for T&F ebooks vs journals (separate SP configs at vendor)
+    if (url.toLowerCase().includes('taylorfrancis.com')) {
+      notes.push('Taylor & Francis Books (taylorfrancis.com) — separate SP from T&F Journals (tandfonline.com); test WAYF independently for each');
+    } else if (url.toLowerCase().includes('tandfonline.com')) {
+      notes.push('Taylor & Francis Journals (tandfonline.com) — separate SP from T&F Books (taylorfrancis.com)');
+    }
+  } else {
+    const skipMatch = lookupSkipVendor(url);
+    if (skipMatch) {
+      notes.push('Vendor identified: ' + skipMatch.name + ' — note: ' + skipMatch.reason);
+    } else {
+      notes.push('Vendor not in confirmed entry point table — check URL manually');
+    }
+  }
+
+  if (notes.length === 0 || (notes.length === 1 && notes[0].startsWith('Vendor'))) {
+    // URL was already a plain vendor URL
+    notes.unshift('No proxy wrapping detected — URL returned as-is');
+  }
+
+  return { type: 'ok', output: url, notes };
+}
+
 // ---- Main conversion dispatcher ----
 function convertLine(raw) {
   const input = raw.trim();
@@ -971,6 +1085,11 @@ function convertLine(raw) {
 
   if (currentMode === 'repair') {
     const result = repairOaUrl(input);
+    return { ...result, input };
+  }
+
+  if (currentMode === 'strip') {
+    const result = stripToVendorUrl(input);
     return { ...result, input };
   }
 
@@ -1039,7 +1158,7 @@ function convert() {
   const lines = raw.split('\n').filter(l => l.trim());
   if (!lines.length) return;
 
-  const limit = currentMode === 'repair' ? REPAIR_LIMIT : BATCH_LIMIT;
+  const limit = (currentMode === 'repair' || currentMode === 'strip') ? REPAIR_LIMIT : BATCH_LIMIT;
   const errEl = document.getElementById('limit-error');
   if (lines.length > limit) {
     errEl.style.display = 'block';

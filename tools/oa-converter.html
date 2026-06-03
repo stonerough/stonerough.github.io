@@ -654,7 +654,7 @@ function lookupVendor(url) {
 // ---- Vendors that must NOT be converted to OpenAthens ----
 // These remain on their existing SSO or other access mechanisms.
 const SKIP_VENDORS = [
-  { domains: ['westlaw.com', 'nzlaw.thomsonreuters.com', 'signon.thomsonreuters.com'],
+  { domains: ['westlaw.com', 'anzlaw.thomsonreuters.com', 'nzlaw.thomsonreuters.com', 'signon.thomsonreuters.com'],
     name: 'Westlaw (Thomson Reuters)',
     reason: 'Custom SAML via REANZ Tuakiri SSO — not managed via OpenAthens' },
   { domains: ['timeshighereducation.com'],

@@ -56,7 +56,12 @@ EZPROXY_HOST = "ezproxy.waikato.ac.nz"
 # ---------------------------------------------------------------------------
 # Confirmed vendor entry point table
 # University of Waikato — confirmed and tested
-# Each entry: (domains_list, vendor_name, confirmed_oa_url)
+# Each entry: (domains_list, vendor_name, confirmed_oa_url, deep_linkable)
+#   deep_linkable (optional, default False): when True, the cleaned vendor URL
+#   is wrapped directly in the OA redirector rather than substituting the
+#   confirmed entry point. Use for vendors whose content paths are stable and
+#   supported by the OA redirector (e.g. DOI-based URLs, stable content IDs).
+#   Vendors in DEEP_LINK_HANDLERS override this flag with custom logic.
 # More specific domains must appear before broader ones in each entry's list.
 # Lookup sorts by domain length descending so plants.jstor.org beats jstor.org.
 # ---------------------------------------------------------------------------
@@ -104,7 +109,7 @@ VENDOR_TABLE = [
     (["cabells.com"], "Cabells Journalytics",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fcabells.com"),
     (["cambridge.org"], "Cambridge Core",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.cambridge.org%2Fcore"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.cambridge.org%2Fcore", True),
     (["energynews.co.nz"], "Capital Letter / Energy News",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fenergynews.co.nz"),
     (["scifinder-n.cas.org", "cas.org"], "CAS SciFinder",
@@ -114,7 +119,7 @@ VENDOR_TABLE = [
     (["chicagomanualofstyle.org"], "Chicago Manual of Style Online",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.chicagomanualofstyle.org"),
     (["journals.uchicago.edu"], "Chicago Journals",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.journals.uchicago.edu%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.journals.uchicago.edu%2F", True),
     (["clinicalkey.com"], "ClinicalKey Student",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.clinicalkey.com%2Fstudent%2Fnursing"),
     (["credoreference.com"], "Credo Reference",
@@ -132,7 +137,7 @@ VENDOR_TABLE = [
     (["dukeupress.edu"], "Duke University Press",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fread.dukeupress.edu"),
     (["ebookcentral.proquest.com"], "EBookCentral (ProQuest)",
-     "https://ebookcentral.proquest.com/lib/waikato/"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Febookcentral.proquest.com%2Flib%2Fwaikato%2F"),
     (["research.ebsco.com"], "EBSCO / Research EBSCO",
      "https://research.ebsco.com/c/fu2ghl"),
     (["ebscohost.com"], "EBSCO DynaMed",
@@ -144,7 +149,7 @@ VENDOR_TABLE = [
     (["emerald.com"], "Emerald Insight",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.emerald.com%2Finsight"),
     (["academic.eb.com", "britannica.com"], "Encyclopaedia Britannica Academic",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Facademic.eb.com"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Facademic.eb.com", True),
     (["etv.org.nz"], "ETV",
      "https://login.etv.org.nz/etv/login?sso_domain=waikato.ac.nz"),
     (["euromonitor.com"], "Euromonitor",
@@ -174,7 +179,7 @@ VENDOR_TABLE = [
     (["inderscienceonline.com"], "Inderscience Online",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Finderscienceonline.com"),
     (["informit.org"], "Informit",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Finformit.org"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Finformit.org", True),
     (["intellectdiscover.com"], "Intellect Discover / Ingenta Connect",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fintellectdiscover.com%2F"),
     (["int-res.com"], "Inter-Research Science Center",
@@ -186,7 +191,7 @@ VENDOR_TABLE = [
     (["plants.jstor.org"], "JSTOR Global Plants",
      "https://proxy.openathens.net/login?qurl=https%3A%2F%2Fplants.jstor.org%2F&entityID=https%3A%2F%2Fidp.waikato.ac.nz%2Fentity"),
     (["jstor.org"], "JSTOR",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.jstor.org%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.jstor.org%2F", True),
     (["jusp.jisc.ac.uk"], "JUSP",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjusp.jisc.ac.uk%2Flogin%2F"),
     (["kanopy.com"], "Kanopy",
@@ -220,7 +225,7 @@ VENDOR_TABLE = [
     (["nber.org"], "NBER",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nber.org%2Fpapers%2F"),
     (["pubs.nctm.org"], "NCTM",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.nctm.org"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.nctm.org", True),
     (["naxosmusiclibrary.com"], "Naxos Music Library",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwaikato.naxosmusiclibrary.com"),
     (["newleftreview.org"], "New Left Review",
@@ -234,17 +239,17 @@ VENDOR_TABLE = [
     (["cdnsciencepub.com"], "NRC Research Press / Canadian Science Publishing",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fcdnsciencepub.com"),
     (["nzcer.org.nz"], "NZCER",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nzcer.org.nz%2Fjournals%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nzcer.org.nz%2Fjournals%2F", True),
     (["oece.nz"], "NZ Int. Research in Early Childhood Education",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Foece.nz%2Fmembers%2Fresearch%2F2019-nzirece-journal-issue-1%2Findigenous-early-childhood-education%2F"),
     (["account.worldcat.org", "worldcat.org"], "OCLC WorldCat",
      "https://waikatouni.account.worldcat.org/account"),
     (["openbookpublishers.com"], "Open Book Publishers",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.openbookpublishers.com%2Fbooks"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.openbookpublishers.com%2Fbooks", True),
     (["ovidsp.ovid.com", "ovid.com"], "Ovid Technologies",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fovidsp.ovid.com%2Fovidweb.cgi%3FT%3DJS%26NEWS%3Dn%26CSC%3DY%26PAGE%3Dmain%26D%3Doemezd"),
     (["academic.oup.com"], "Oxford Academic",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Facademic.oup.com%2Fageing%2Fissue"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Facademic.oup.com%2F", True),
     (["oxfordartonline.com"], "Oxford Art Online",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordartonline.com%2F"),
     (["opil.ouplaw.com"], "Oxford Law (OPIL)",
@@ -252,7 +257,7 @@ VENDOR_TABLE = [
     (["oxfordmusiconline.com"], "Oxford Music Online",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordmusiconline.com%2F"),
     (["oxfordreference.com"], "Oxford Reference",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordreference.com%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordreference.com%2F", True),
     (["oxfordscholarlyeditions.com"], "Oxford Scholarly Editions",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordscholarlyeditions.com"),
     (["veryshortintroductions.com"], "Oxford Very Short Introductions",
@@ -266,7 +271,7 @@ VENDOR_TABLE = [
     (["philosophynow.org"], "Philosophy Now",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fphilosophynow.org"),
     (["pnas.org"], "PNAS",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpnas.org"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpnas.org", True),
     (["thepolynesiansociety.org"], "The Polynesian Society",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fthepolynesiansociety.org"),
     (["portlandpress.com"], "Portland Press",
@@ -274,7 +279,7 @@ VENDOR_TABLE = [
     (["pressreader.com"], "PressReader",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.pressreader.com"),
     (["muse.jhu.edu"], "Project MUSE",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmuse.jhu.edu"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmuse.jhu.edu", True),
     (["proquest.com"], "ProQuest / Alexander Street",
      "https://www.proquest.com/anznews/fromDatabasesLayer?accountid=17287"),
     (["psychiatryonline.org"], "PsychiatryOnline",
@@ -286,13 +291,13 @@ VENDOR_TABLE = [
     (["royalsocietypublishing.org"], "Royal Society Publishing",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Froyalsocietypublishing.org"),
     (["journals.sagepub.com"], "SAGE Journals",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.sagepub.com"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.sagepub.com", True),
     (["methods.sagepub.com"], "Sage Research Methods",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmethods.sagepub.com%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmethods.sagepub.com%2F", True),
     (["scopus.com"], "Scopus",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.scopus.com%2F"),
     (["sciencedirect.com"], "ScienceDirect",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.sciencedirect.com%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.sciencedirect.com%2F", True),
     (["scival.com"], "SciVal",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.scival.com"),
     (["scientificamerican.com"], "Scientific American",
@@ -300,13 +305,13 @@ VENDOR_TABLE = [
     (["spiedigitallibrary.org"], "SPIE Digital Library",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fspiedigitallibrary.org"),
     (["link.springer.com", "springer.com"], "Springer Nature Link",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Flink.springer.com%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Flink.springer.com%2F", True),
     (["standards.govt.nz"], "Standards New Zealand",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fstandards.govt.nz%2Fip-check"),
     (["tandfonline.com"], "Taylor & Francis Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.tandfonline.com%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.tandfonline.com%2F", True),
     (["taylorfrancis.com"], "Taylor & Francis Books",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.taylorfrancis.com%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.taylorfrancis.com%2F", True),
     (["chronicle.com"], "The Chronicle of Higher Education",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.chronicle.com"),
     (["ucpress.edu"], "University of California Press",
@@ -318,7 +323,7 @@ VENDOR_TABLE = [
     (["wheelers.co"], "Wheelers ePlatform",
      "https://waikatolibrary.wheelers.co/"),
     (["onlinelibrary.wiley.com", "wiley.com"], "Wiley Online Library",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fonlinelibrary.wiley.com%2F"),
+     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fonlinelibrary.wiley.com%2F", True),
     (["iknowconnect.cch.com"], "Wolters Kluwer / iKnowConnect",
      "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fiknowconnect.cch.com"),
     (["reotupu.co.nz"], "Wordstream / ReoTupu",
@@ -333,6 +338,53 @@ _SORTED_TABLE = sorted(
     key=lambda e: max(len(d) for d in e[0]),
     reverse=True
 )
+
+
+# ---------------------------------------------------------------------------
+# Deep-link handlers for vendors whose source URLs carry meaningful path/query
+# information worth preserving (e.g. a specific title ID).
+#
+# Each entry maps a domain string to a callable:
+#   handler(cleaned_vendor_url: str) -> str | None
+# Return a fully-formed OA redirector URL if a deep link can be constructed,
+# or None to fall back to the confirmed entry point from VENDOR_TABLE.
+# ---------------------------------------------------------------------------
+
+def _ebookcentral_deep_link(url: str) -> str | None:
+    """
+    Preserve EbookCentral title-level deep links.
+
+    Recognises:
+      .../lib/waikato/detail.action?docID=XXXXXXX
+      .../lib/waikato/reader.action?docID=XXXXXXX
+
+    Returns an OA-wrapped deep link when docID is present, otherwise None
+    (caller falls back to the confirmed entry point).
+    """
+    # Must contain a docID parameter to be worth deep-linking.
+    if not re.search(r"[?&]docID=\d+", url, re.IGNORECASE):
+        return None
+
+    # Normalise: ensure the URL uses the canonical lib/waikato path.
+    # If for any reason the lib path is absent, still wrap what we have.
+    return OA_PREFIX + quote(url, safe="")
+
+
+DEEP_LINK_HANDLERS: dict[str, object] = {
+    "ebookcentral.proquest.com": _ebookcentral_deep_link,
+}
+
+
+def apply_deep_link_handler(domain_key: str, url: str) -> str | None:
+    """
+    Look up and apply a deep-link handler for the given domain key.
+    Returns a deep-linked OA URL, or None if no handler exists or the
+    handler declines (returns None) for this URL.
+    """
+    handler = DEEP_LINK_HANDLERS.get(domain_key)
+    if handler is None:
+        return None
+    return handler(url)
 
 
 # ---------------------------------------------------------------------------
@@ -408,16 +460,22 @@ def lookup_skip_vendor(url: str) -> tuple[str, str] | None:
     return None
 
 
-def lookup_vendor(url: str) -> tuple[str, str] | None:
+def lookup_vendor(url: str) -> tuple[str, str, str, bool] | None:
     """
     Match a URL against the vendor table.
-    Returns (vendor_name, confirmed_oa_url) or None.
+    Returns (vendor_name, confirmed_oa_url, matched_domain, deep_linkable) or None.
+    matched_domain is the specific domain string that matched, used as the
+    key into DEEP_LINK_HANDLERS.
+    deep_linkable indicates whether the cleaned vendor URL should be wrapped
+    directly in the OA redirector rather than substituting the entry point.
     """
     lower = url.lower()
-    for domains, name, oa_url in _SORTED_TABLE:
+    for entry in _SORTED_TABLE:
+        domains, name, oa_url = entry[0], entry[1], entry[2]
+        deep_linkable = entry[3] if len(entry) > 3 else False
         for domain in domains:
             if domain.lower() in lower:
-                return (name, oa_url)
+                return (name, oa_url, domain, deep_linkable)
     return None
 
 
@@ -551,7 +609,11 @@ def repair_oa_url(raw: str) -> tuple[str, str, list[str]]:
                 return ("skip", "", notes)
             match = lookup_vendor(vendor_url)
             if match:
-                name, oa_url = match
+                name, oa_url, domain_key, deep_linkable = match
+                deep = apply_deep_link_handler(domain_key, vendor_url) or (to_openathens(vendor_url) if deep_linkable else None)
+                if deep:
+                    notes.append(f"Vendor recognised: {name} — deep link preserved")
+                    return ("repaired", deep, notes)
                 notes.append(f"Vendor recognised: {name} — confirmed entry point substituted")
                 return ("repaired", oa_url, notes)
             else:
@@ -599,7 +661,11 @@ def repair_oa_url(raw: str) -> tuple[str, str, list[str]]:
         # Table lookup on the extracted vendor URL
         match = lookup_vendor(url_param)
         if match:
-            name, oa_url = match
+            name, oa_url, domain_key, deep_linkable = match
+            deep = apply_deep_link_handler(domain_key, url_param) or (to_openathens(url_param) if deep_linkable else None)
+            if deep:
+                notes.append(f"Vendor recognised: {name} — deep link preserved")
+                return ("repaired", deep, notes)
             notes.append(f"Vendor recognised: {name} — confirmed entry point substituted")
             return ("repaired", oa_url, notes)
 
@@ -621,7 +687,11 @@ def repair_oa_url(raw: str) -> tuple[str, str, list[str]]:
             return ("skip", "", notes)
         match = lookup_vendor(url)
         if match:
-            name, oa_url = match
+            name, oa_url, domain_key, deep_linkable = match
+            deep = apply_deep_link_handler(domain_key, url) or (to_openathens(url) if deep_linkable else None)
+            if deep:
+                notes.append(f"Not an OA URL — vendor recognised: {name} — deep link preserved")
+                return ("repaired", deep, notes)
             notes.append(f"Not an OA URL — vendor recognised: {name} — confirmed entry point used")
             return ("repaired", oa_url, notes)
         notes.append("Not an OA URL — wrapped in standard redirector")
@@ -661,7 +731,10 @@ def convert_line(
             return (source, "", "skip", f"{name}: {reason}")
         match = lookup_vendor(source)
         if match:
-            name, oa_url = match
+            name, oa_url, domain_key, deep_linkable = match
+            deep = apply_deep_link_handler(domain_key, source) or (to_openathens(source) if deep_linkable else None)
+            if deep:
+                return (source, deep, "confirmed", f"Confirmed deep link: {name}")
             return (source, oa_url, "confirmed", f"Confirmed entry point: {name}")
         return (source, to_openathens(source), "ok", "")
 
@@ -674,10 +747,14 @@ def convert_line(
             return (source, "", "skip", f"{name}: {reason}")
         match = lookup_vendor(cleaned)
         if match:
-            name, oa_url = match
+            name, oa_url, domain_key, deep_linkable = match
             unusual = [n for n in notes
                        if not n.startswith("Proxied hostname restored")
                        and n != "EZproxy login wrapper stripped"]
+            deep = apply_deep_link_handler(domain_key, cleaned) or (to_openathens(cleaned) if deep_linkable else None)
+            if deep:
+                all_notes = unusual + [f"Confirmed deep link: {name}"]
+                return (source, deep, "confirmed", "; ".join(all_notes))
             all_notes = unusual + [f"Confirmed entry point: {name}"]
             return (source, oa_url, "confirmed", "; ".join(all_notes))
         unusual = [n for n in notes

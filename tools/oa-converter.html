@@ -622,12 +622,39 @@ const VENDOR_TABLE = [
   { domains: ['worldscientific.com'], name: 'World Scientific Publishing', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fworldscientific.com' },
 ];
 
+// ---- Deep-link handlers for vendors whose source URLs carry meaningful ----
+// path/query information worth preserving (e.g. a specific document ID),
+// where the confirmed entry point alone would discard it.
+// Each handler: (cleanedVendorUrl) => string|null
+// Return a fully-formed output URL to preserve the deep link, or null to
+// fall back to the vendor's confirmed entry point / deepLinkable wrapping.
+const DEEP_LINK_HANDLERS = {
+  'proquest.com': function(url) {
+    // Preserve ProQuest document-level deep links (e.g. dissertations and
+    // theses, articles) that carry a docview ID.
+    // ProQuest is a federated resource (no OpenAthens redirector prefix —
+    // confirmed by Library Systems 30/06/2026). The vendor's own permalink
+    // carries the account ID needed for federated auth, so the cleaned URL
+    // is returned as-is rather than wrapped or substituted.
+    if (!/\/docview\/\d+/i.test(url)) return null;
+    return url;
+  }
+};
+
+function applyDeepLinkHandler(domainKey, url) {
+  const handler = DEEP_LINK_HANDLERS[domainKey];
+  if (!handler) return null;
+  return handler(url);
+}
+
 // Look up a vendor URL against the confirmed entry point table.
-// Returns { name, url, deepLinkable } or null.
+// Returns { name, url, deepLinkable, domain } or null.
 // deepLinkable: true if the vendor uses the standard go.openathens.net redirector,
 // meaning a deep content URL can be wrapped directly.
 // false for vendors with custom SAML/non-standard entry points where deep linking
 // via the standard redirector won't work (Kanopy, LexisNexis, ASTM etc.)
+// domain: the specific matched domain string, used as the key into
+// DEEP_LINK_HANDLERS for vendors needing custom deep-link preservation.
 function lookupVendor(url) {
   const lower = url.toLowerCase();
   const OA_REDIRECTOR = 'https://go.openathens.net/redirector/waikato.ac.nz?url=';
@@ -643,7 +670,8 @@ function lookupVendor(url) {
         return {
           name: entry.name,
           url: entry.url,
-          deepLinkable: entry.url.startsWith(OA_REDIRECTOR)
+          deepLinkable: entry.url.startsWith(OA_REDIRECTOR),
+          domain: domain
         };
       }
     }
@@ -880,7 +908,11 @@ function repairOaUrl(raw) {
       }
       const match = lookupVendor(vendorUrl);
       if (match) {
-        if (match.deepLinkable) {
+        const deepLink = applyDeepLinkHandler(match.domain, vendorUrl);
+        if (deepLink) {
+          notes.push('Vendor recognised: ' + match.name + ' — deep link preserved');
+          return { type: 'repair', output: deepLink, notes };
+        } else if (match.deepLinkable) {
           notes.push('Vendor recognised: ' + match.name + ' — deep link wrapped in OA redirector');
           return { type: 'repair', output: toOpenAthens(vendorUrl), notes };
         } else {
@@ -940,6 +972,11 @@ function repairOaUrl(raw) {
     // Now look up the vendor in the table
     const match = lookupVendor(urlParam);
     if (match) {
+      const deepLink = applyDeepLinkHandler(match.domain, urlParam);
+      if (deepLink) {
+        notes.push('Vendor recognised: ' + match.name + ' — deep link preserved');
+        return { type: 'repair', output: deepLink, notes };
+      }
       notes.push('Vendor recognised: ' + match.name + ' — confirmed entry point substituted');
       return { type: 'repair', output: match.url, notes };
     }
@@ -965,7 +1002,11 @@ function repairOaUrl(raw) {
     }
     const match = lookupVendor(input);
     if (match) {
-      if (match.deepLinkable) {
+      const deepLink = applyDeepLinkHandler(match.domain, input);
+      if (deepLink) {
+        notes.push('Not an OA URL — vendor recognised: ' + match.name + ' — deep link preserved');
+        return { type: 'repair', output: deepLink, notes };
+      } else if (match.deepLinkable) {
         notes.push('Not an OA URL — vendor recognised: ' + match.name + ' — deep link wrapped in OA redirector');
         return { type: 'repair', output: toOpenAthens(input), notes };
       } else {
@@ -994,7 +1035,8 @@ function stripToVendorUrl(raw) {
 
   // 1. Unwrap go.openathens.net redirector
   //    https://go.openathens.net/redirector/...?url=<encoded>
-  const goOaMatch = url.match(/^https?:\/\/go\.openathens\.net\/redirector\/[^?]+\?.*[?&]url=([^&]+)/i);
+  const isGoOa = /^https?:\/\/go\.openathens\.net\/redirector\//i.test(url);
+  const goOaMatch = isGoOa ? url.match(/[?&]url=(.+?)(?:&[a-zA-Z]|$)/i) : null;
   if (goOaMatch) {
     try {
       url = decodeURIComponent(goOaMatch[1]);
@@ -1006,7 +1048,8 @@ function stripToVendorUrl(raw) {
 
   // 2. Unwrap proxy.openathens.net login
   //    https://proxy.openathens.net/login?qurl=<encoded>&entityID=...
-  const proxyOaMatch = url.match(/^https?:\/\/proxy\.openathens\.net\/login\?.*[?&]qurl=([^&]+)/i);
+  const isProxyOa = /^https?:\/\/proxy\.openathens\.net\/login\?/i.test(url);
+  const proxyOaMatch = isProxyOa ? url.match(/[?&]qurl=(.+?)(?:&[a-zA-Z]|$)/i) : null;
   if (proxyOaMatch) {
     try {
       url = decodeURIComponent(proxyOaMatch[1]);
@@ -1018,7 +1061,7 @@ function stripToVendorUrl(raw) {
 
   // 3. Unwrap EZproxy login wrapper
   //    https://ezproxy.waikato.ac.nz/login?url=<encoded>  or  ?qurl=<encoded>
-  const ezLoginMatch = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?.*[?&](?:url|qurl)=([^&]+)/i);
+  const ezLoginMatch = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?(?:q?url=)(.+)$/i);
   if (ezLoginMatch) {
     try {
       url = decodeURIComponent(ezLoginMatch[1]);
@@ -1027,7 +1070,7 @@ function stripToVendorUrl(raw) {
       return { type: 'skip', output: null, notes: ['Could not decode EZproxy url/qurl parameter'] };
     }
     // May be double-wrapped — check if result is itself an EZproxy URL
-    const inner = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?.*[?&](?:url|qurl)=([^&]+)/i);
+    const inner = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?(?:q?url=)(.+)$/i);
     if (inner) {
       try {
         url = decodeURIComponent(inner[1]);
@@ -1105,7 +1148,11 @@ function convertLine(raw) {
     // Table lookup first
     const match = lookupVendor(input);
     if (match) {
-      if (match.deepLinkable) {
+      const deepLink = applyDeepLinkHandler(match.domain, input);
+      if (deepLink) {
+        return { type: 'confirmed', input, output: deepLink,
+          notes: ['Vendor confirmed (' + match.name + ') — deep link preserved'] };
+      } else if (match.deepLinkable) {
         // Wrap the deep content URL directly — preserve the path for reading lists
         return { type: 'confirmed', input, output: toOpenAthens(input),
           notes: ['Vendor confirmed (' + match.name + ') — deep link wrapped in OA redirector'] };
@@ -1130,7 +1177,11 @@ function convertLine(raw) {
     const match = lookupVendor(url);
     if (match) {
       const unusualNotes = notes.filter(n => !n.startsWith('Proxied hostname restored'));
-      if (match.deepLinkable) {
+      const deepLink = applyDeepLinkHandler(match.domain, url);
+      if (deepLink) {
+        return { type: 'confirmed', input, output: deepLink,
+          notes: [...unusualNotes, 'Vendor confirmed (' + match.name + ') — deep link preserved'] };
+      } else if (match.deepLinkable) {
         // Wrap the cleaned deep content URL — preserve path for reading lists
         return { type: 'confirmed', input, output: toOpenAthens(url),
           notes: [...unusualNotes, 'Vendor confirmed (' + match.name + ') — deep link wrapped in OA redirector'] };

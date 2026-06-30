@@ -1,870 +1,1326 @@
-#!/usr/bin/env python3
-"""
-EZproxy / OpenAthens URL Converter
-University of Waikato Library
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenAthens URL Converter — Waikato</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --panel: #ffffff;
+    --output-bg: #1a1e2e;
+    --output-text: #e8eaf0;
+    --accent: #005b99;
+    --accent-light: #e8f1f8;
+    --warn: #b85c00;
+    --warn-bg: #fff5ec;
+    --skip: #8b1a1a;
+    --skip-bg: #fff0f0;
+    --ok: #1a6b3a;
+    --ok-bg: #edf7f1;
+    --confirmed: #1a4a6b;
+    --border: #d4d0c8;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
 
-Reads a plain text or CSV file of URLs (one per line, or first column of CSV),
-converts each to an OpenAthens redirector link, and writes a 4-column CSV:
-  source_url, converted_url, status, notes
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
-Usage:
-  python3 oa_convert.py input.csv output.csv
-  python3 oa_convert.py input.txt output.csv
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: #1a1a1a;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
 
-Options:
-  --plain   Convert plain URLs to OpenAthens without EZproxy cleaning
-            (default is EZproxy cleaning mode)
-  --repair  Diagnose and repair broken OpenAthens URLs
+  header {
+    background: var(--accent);
+    color: white;
+    padding: 18px 32px;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; }
+  header span { font-size: 0.8rem; opacity: 0.7; font-weight: 300; }
 
-Conversion modes
-----------------
-EZproxy mode (default):
-  Strips EZproxy proxy layers, resolves vendor domain, looks up confirmed
-  entry point in the vendor table, and wraps in the OA redirector.
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+    gap: 0;
+  }
 
-Plain mode (--plain):
-  Wraps plain vendor URLs in the OA redirector, substituting confirmed entry
-  points from the vendor table where a match is found.
+  .left {
+    padding: 28px 32px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
 
-Repair mode (--repair):
-  Accepts broken go.openathens.net or proxy.openathens.net URLs and attempts
-  to diagnose and correct common faults: double-encoding, wrong institution
-  scope, malformed url= parameter, old-style proxy subdomains. Also accepts
-  plain vendor URLs and converts them.
+  .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 8px;
+  }
 
-Status values in output CSV
----------------------------
-  confirmed  Vendor matched in the confirmed entry point table
-  ok         Converted cleanly without table match
-  warn       Converted but with unusual conditions noted
-  repaired   Repaired broken OA URL (repair mode)
-  skip       Could not convert — see notes column
-"""
+  .mode-tabs {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .mode-tab {
+    flex: 1;
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: 0.82rem;
+    font-weight: 500;
+    background: var(--panel);
+    border: none;
+    cursor: pointer;
+    color: #555;
+    transition: all 0.15s;
+    border-right: 1px solid var(--border);
+  }
+  .mode-tab:last-child { border-right: none; }
+  .mode-tab.active { background: var(--accent); color: white; }
+  .mode-tab:not(.active):hover { background: var(--accent-light); }
 
-import sys
-import re
-import csv
-import argparse
-from pathlib import Path
-from urllib.parse import unquote, quote
+  textarea {
+    width: 100%;
+    height: 280px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.6;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    resize: vertical;
+    background: var(--panel);
+    color: #1a1a1a;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: #aaa; }
 
-OA_PREFIX = "https://go.openathens.net/redirector/waikato.ac.nz?url="
-OA_SCOPE = "waikato.ac.nz"
-EZPROXY_HOST = "ezproxy.waikato.ac.nz"
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
 
+  button.primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 24px;
+    font-family: var(--sans);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: background 0.15s;
+  }
+  button.primary:hover { background: #004a80; }
 
-# ---------------------------------------------------------------------------
-# Confirmed vendor entry point table
-# University of Waikato — confirmed and tested
-# Each entry: (domains_list, vendor_name, confirmed_oa_url, deep_linkable)
-#   deep_linkable (optional, default False): when True, the cleaned vendor URL
-#   is wrapped directly in the OA redirector rather than substituting the
-#   confirmed entry point. Use for vendors whose content paths are stable and
-#   supported by the OA redirector (e.g. DOI-based URLs, stable content IDs).
-#   Vendors in DEEP_LINK_HANDLERS override this flag with custom logic.
-# More specific domains must appear before broader ones in each entry's list.
-# Lookup sorts by domain length descending so plants.jstor.org beats jstor.org.
-# ---------------------------------------------------------------------------
-VENDOR_TABLE = [
-    (["acm.org"], "ACM Digital Library",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.acm.org%2Fdl%2F"),
-    (["science.org", "sciencemag.org"], "AAAS / Science.org",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.science.org%2F"),
-    (["pubs.acs.org"], "ACS Publications",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.acs.org%2Fsearch%2Fadvanced"),
-    (["pubs.aip.org"], "AIP Publishing",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.aip.org%2Fpages%2Fjournals"),
-    (["amdigital.co.uk"], "Adam Matthew Digital",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.firstworldwar.amdigital.co.uk"),
-    (["aeaweb.org"], "American Economic Association",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.aeaweb.org%2Fjournals"),
-    (["journals.physiology.org"], "American Physiological Society",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.physiology.org"),
-    (["psycnet.apa.org"], "APA / PsycNET",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpsycnet.apa.org%2F"),
-    (["ascelibrary.org"], "ASCE",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fascelibrary.org%2Fjournals"),
-    (["mathscinet.ams.org"], "AMS MathSciNet",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmathscinet.ams.org%2Fmathscinet"),
-    (["annualreviews.org"], "Annual Reviews",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.annualreviews.org%2F"),
-    (["journals.aps.org"], "APS Journals",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.aps.org%2Farchive%2F"),
-    (["journals.asm.org"], "ASM Journals",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.asm.org"),
-    (["asmedigitalcollection.asme.org"], "ASME Digital Collection",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fasmedigitalcollection.asme.org%2Fjournals"),
-    (["compass.astm.org", "astm.org"], "ASTM Compass",
-     "https://iam.astm.org/sso/saml2/0oaupiq0svm9luOS84x7?fromURI=https://compass.astm.org"),
-    (["asia-studies.com"], "Asia Studies Full-Text Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=http%3A%2F%2Fasia-studies.com%2F"),
-    (["bloomsburycollections.com"], "Bloomsbury Digital Resources",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.bloomsburycollections.com%2Fhome"),
-    (["bwb.co.nz"], "Bridget Williams e-Books",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fbwbtextscollection.bwb.co.nz"),
-    (["brill.com"], "Brill Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fbrill.com"),
-    (["browzine.com"], "BrowZine",
-     "https://browzine.com/libraries/463/subjects"),
-    (["cabells.com"], "Cabells Journalytics",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fcabells.com"),
-    (["cambridge.org"], "Cambridge Core",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.cambridge.org%2Fcore", True),
-    (["energynews.co.nz"], "Capital Letter / Energy News",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fenergynews.co.nz"),
-    (["scifinder-n.cas.org", "cas.org"], "CAS SciFinder",
-     "https://sso.cas.org/sp/startSSO.ping?PartnerIdpId=https%3A%2F%2Fidp.waikato.ac.nz%2Fentity&TargetResource=https%3A%2F%2Fscifinder-n.cas.org%2F"),
-    (["link.gale.com", "gale.com"], "Cengage / Gale",
-     "https://link.gale.com/apps/AONE?u=waikato"),
-    (["chicagomanualofstyle.org"], "Chicago Manual of Style Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.chicagomanualofstyle.org"),
-    (["journals.uchicago.edu"], "Chicago Journals",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.journals.uchicago.edu%2F", True),
-    (["clinicalkey.com"], "ClinicalKey Student",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.clinicalkey.com%2Fstudent%2Fnursing"),
-    (["credoreference.com"], "Credo Reference",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fsearch.credoreference.com"),
-    (["connectsci.au"], "CSIRO / ConnectSci",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fconnectsci.au%2Fwr"),
-    (["datanalysis.morningstar", "morningstar.com.au"], "DatAnalysis",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fdatanalysis.morningstar.com.au%2Faf%2Fdathome%3Fxtm-licensee%3Ddatpremium"),
-    (["degruyterbrill.com", "degruyter.com"], "De Gruyter / De Gruyter Brill",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fdegruyterbrill.com"),
-    (["digitaltheatreplus.com"], "Digital Theatre Plus",
-     "https://auth.digitaltheatreplus.com/sso/saml2/0oavwa66z2j634owi4x7"),
-    (["docuseek2.com"], "Docuseek",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fdocuseek2.com"),
-    (["dukeupress.edu"], "Duke University Press",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fread.dukeupress.edu"),
-    (["ebookcentral.proquest.com"], "EBookCentral (ProQuest)",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Febookcentral.proquest.com%2Flib%2Fwaikato%2F"),
-    (["research.ebsco.com"], "EBSCO / Research EBSCO",
-     "https://research.ebsco.com/c/fu2ghl"),
-    (["ebscohost.com"], "EBSCO DynaMed",
-     "https://search.ebscohost.com/login.aspx?authtype=ip,sso&custid=s4804380&groupid=main&profid=dmp"),
-    (["euppublishing.com"], "Edinburgh University Press",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.euppublishing.com%2Fdoi%2F10.3366%2Fircl.2025.0638"),
-    (["elgaronline.com"], "ElgarOnline",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Felgaronline.com"),
-    (["emerald.com"], "Emerald Insight",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.emerald.com%2Finsight"),
-    (["academic.eb.com", "britannica.com"], "Encyclopaedia Britannica Academic",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Facademic.eb.com", True),
-    (["etv.org.nz"], "ETV",
-     "https://login.etv.org.nz/etv/login?sso_domain=waikato.ac.nz"),
-    (["euromonitor.com"], "Euromonitor",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Feuromonitor.com"),
-    (["exacteditions.com"], "Exact Editions",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fexacteditions.com"),
-    (["ft.com"], "Financial Times",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fft.com"),
-    (["pubs.geoscienceworld.org", "geoscienceworld.org"], "GeoScienceWorld",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.geoscienceworld.org"),
-    (["guilfordjournals.com"], "Guilford Periodicals Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fguilfordjournals.com"),
-    (["heinonline.org"], "HeinOnline",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fheinonline.org%2FHOL%2FWelcome"),
-    (["hstalks.com"], "Henry Stewart Talks",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fhstalks.com"),
-    (["humankinetics.com"], "Human Kinetics",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.humankinetics.com"),
-    (["iclr.co.uk"], "ICLR",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Ficlr.co.uk"),
-    (["ieeexplore.ieee.org"], "IEEE Xplore",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fieeexplore.ieee.org"),
-    (["igi-global.com"], "IGI Global",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.igi-global.com"),
-    (["impan.pl"], "IMPAN",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.impan.pl%2Fen%2Fpublishing-house%2Fjournals-and-series%2Facta-arithmetica%2Fall%2F207%2F1"),
-    (["inderscienceonline.com"], "Inderscience Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Finderscienceonline.com"),
-    (["informit.org"], "Informit",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Finformit.org", True),
-    (["intellectdiscover.com"], "Intellect Discover / Ingenta Connect",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fintellectdiscover.com%2F"),
-    (["int-res.com"], "Inter-Research Science Center",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fint-res.com"),
-    (["iopscience.iop.org"], "IOPscience",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fiopscience.iop.org"),
-    (["ipasource.com"], "IPA Source",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.ipasource.com%2Flogin%2Funiversity-of-waikato%2F"),
-    (["plants.jstor.org"], "JSTOR Global Plants",
-     "https://proxy.openathens.net/login?qurl=https%3A%2F%2Fplants.jstor.org%2F&entityID=https%3A%2F%2Fidp.waikato.ac.nz%2Fentity"),
-    (["jstor.org"], "JSTOR",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.jstor.org%2F", True),
-    (["jusp.jisc.ac.uk"], "JUSP",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjusp.jisc.ac.uk%2Flogin%2F"),
-    (["kanopy.com"], "Kanopy",
-     "https://waikato.kanopy.com/"),
-    (["knowledge-basket.co.nz"], "Knowledge Basket",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.knowledge-basket.co.nz%2Fdatabases%2Fnewztext-uni%2Fsearch-newztext%2F"),
-    (["lexis.com", "lexisnexis.com"], "LexisNexis Advance",
-     "https://advance.lexis.com/nz?federationidp=HC3SRN51745"),
-    (["procedures.lww.com"], "Lippincott Procedures",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fprocedures.lww.com%2Flnp%2Fid%2FNZ"),
-    (["advisor.lww.com"], "Lippincott Solutions",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fadvisor.lww.com%2Flna%2Fid%2FUOW"),
-    (["liverpooluniversitypress.co.uk"], "Liverpool University Press",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.liverpooluniversitypress.co.uk%2Floi%2Fwhpeh%2Fgroup%2Fd2020.y2023"),
-    (["lrb.co.uk"], "London Review of Books",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.lrb.co.uk"),
-    (["magpies.net.au"], "Magpies",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmagpies.net.au"),
-    (["maorilawreview.co.nz"], "Maori Law Review",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmaorilawreview.co.nz"),
-    (["advantage.marketline.com"], "MarketLine Advantage",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fadvantage.marketline.com%2F"),
-    (["accesspharmacy.mhmedical.com"], "McGraw-Hill AccessPharmacy",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Faccesspharmacy.mhmedical.com%2F"),
-    (["microbiologyresearch.org"], "Microbiology Society",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.microbiologyresearch.org%2Fcontent%2Fjournal%2Fijsem%2F76%2F1"),
-    (["direct.mit.edu"], "MIT Press Direct",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fdirect.mit.edu"),
-    (["nature.com"], "Nature",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nature.com%2F"),
-    (["nber.org"], "NBER",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nber.org%2Fpapers%2F"),
-    (["pubs.nctm.org"], "NCTM",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.nctm.org", True),
-    (["naxosmusiclibrary.com"], "Naxos Music Library",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwaikato.naxosmusiclibrary.com"),
-    (["newleftreview.org"], "New Left Review",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fnewleftreview.org"),
-    (["nzgeo.com"], "New Zealand Geographic",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nzgeo.com"),
-    (["companyresearch.nzx.com"], "NZX",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fcompanyresearch.nzx.com%2Fdeep_ar%2F"),
-    (["noids.nz"], "Notes on Injectable Drugs",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.noids.nz"),
-    (["cdnsciencepub.com"], "NRC Research Press / Canadian Science Publishing",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fcdnsciencepub.com"),
-    (["nzcer.org.nz"], "NZCER",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nzcer.org.nz%2Fjournals%2F", True),
-    (["oece.nz"], "NZ Int. Research in Early Childhood Education",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Foece.nz%2Fmembers%2Fresearch%2F2019-nzirece-journal-issue-1%2Findigenous-early-childhood-education%2F"),
-    (["account.worldcat.org", "worldcat.org"], "OCLC WorldCat",
-     "https://waikatouni.account.worldcat.org/account"),
-    (["openbookpublishers.com"], "Open Book Publishers",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.openbookpublishers.com%2Fbooks", True),
-    (["ovidsp.ovid.com", "ovid.com"], "Ovid Technologies",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fovidsp.ovid.com%2Fovidweb.cgi%3FT%3DJS%26NEWS%3Dn%26CSC%3DY%26PAGE%3Dmain%26D%3Doemezd"),
-    (["academic.oup.com"], "Oxford Academic",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Facademic.oup.com%2F", True),
-    (["oxfordartonline.com"], "Oxford Art Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordartonline.com%2F"),
-    (["opil.ouplaw.com"], "Oxford Law (OPIL)",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fopil.ouplaw.com%2Fhome%2FOHT"),
-    (["oxfordmusiconline.com"], "Oxford Music Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordmusiconline.com%2F"),
-    (["oxfordreference.com"], "Oxford Reference",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordreference.com%2F", True),
-    (["oxfordscholarlyeditions.com"], "Oxford Scholarly Editions",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordscholarlyeditions.com"),
-    (["veryshortintroductions.com"], "Oxford Very Short Introductions",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fveryshortintroductions.com"),
-    (["oed.com"], "Oxford English Dictionary",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oed.com%2F"),
-    (["philpapers.org"], "PhilPapers",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fphilpapers.org"),
-    (["pdcnet.org"], "Philosophy Documentation Center",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpdcnet.org"),
-    (["philosophynow.org"], "Philosophy Now",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fphilosophynow.org"),
-    (["pnas.org"], "PNAS",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpnas.org", True),
-    (["thepolynesiansociety.org"], "The Polynesian Society",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fthepolynesiansociety.org"),
-    (["portlandpress.com"], "Portland Press",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fportlandpress.com"),
-    (["pressreader.com"], "PressReader",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.pressreader.com"),
-    (["muse.jhu.edu"], "Project MUSE",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmuse.jhu.edu", True),
-    (["proquest.com"], "ProQuest / Alexander Street",
-     "https://www.proquest.com/anznews/fromDatabasesLayer?accountid=17287"),
-    (["psychiatryonline.org"], "PsychiatryOnline",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpsychiatryonline.org%2F"),
-    (["jove.com"], "JoVE",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjove.com"),
-    (["pubs.rsc.org"], "Royal Society of Chemistry",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.rsc.org%2Fen%2Fjournals"),
-    (["royalsocietypublishing.org"], "Royal Society Publishing",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Froyalsocietypublishing.org"),
-    (["journals.sagepub.com"], "SAGE Journals",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.sagepub.com", True),
-    (["methods.sagepub.com"], "Sage Research Methods",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmethods.sagepub.com%2F", True),
-    (["scopus.com"], "Scopus",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.scopus.com%2F"),
-    (["sciencedirect.com"], "ScienceDirect",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.sciencedirect.com%2F", True),
-    (["scival.com"], "SciVal",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.scival.com"),
-    (["scientificamerican.com"], "Scientific American",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fscientificamerican.com"),
-    (["spiedigitallibrary.org"], "SPIE Digital Library",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fspiedigitallibrary.org"),
-    (["link.springer.com", "springer.com"], "Springer Nature Link",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Flink.springer.com%2F", True),
-    (["standards.govt.nz"], "Standards New Zealand",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fstandards.govt.nz%2Fip-check"),
-    (["tandfonline.com"], "Taylor & Francis Online",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.tandfonline.com%2F", True),
-    (["taylorfrancis.com"], "Taylor & Francis Books",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.taylorfrancis.com%2F", True),
-    (["chronicle.com"], "The Chronicle of Higher Education",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.chronicle.com"),
-    (["ucpress.edu"], "University of California Press",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fucpress.edu"),
-    (["vitalsource.com"], "VitalSource",
-     "https://bc.vitalsource.com/tenants/openathens/bookshelf"),
-    (["warc.com"], "WARC",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.warc.com"),
-    (["wheelers.co"], "Wheelers ePlatform",
-     "https://waikatolibrary.wheelers.co/"),
-    (["onlinelibrary.wiley.com", "wiley.com"], "Wiley Online Library",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fonlinelibrary.wiley.com%2F", True),
-    (["iknowconnect.cch.com"], "Wolters Kluwer / iKnowConnect",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fiknowconnect.cch.com"),
-    (["reotupu.co.nz"], "Wordstream / ReoTupu",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.reotupu.co.nz%2Fwslivewakareo%2FDefault.aspx"),
-    (["worldscientific.com"], "World Scientific Publishing",
-     "https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fworldscientific.com"),
-]
+  button.secondary {
+    background: transparent;
+    color: #666;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 16px;
+    font-family: var(--sans);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  button.secondary:hover { border-color: #aaa; color: #333; }
 
-# Pre-sort by longest domain first so specific subdomains beat broad domains
-_SORTED_TABLE = sorted(
-    VENDOR_TABLE,
-    key=lambda e: max(len(d) for d in e[0]),
-    reverse=True
-)
+  .stats { font-size: 0.78rem; color: #888; font-family: var(--mono); }
 
+  .right {
+    background: var(--output-bg);
+    display: flex;
+    flex-direction: column;
+  }
 
-# ---------------------------------------------------------------------------
-# Deep-link handlers for vendors whose source URLs carry meaningful path/query
-# information worth preserving (e.g. a specific title ID).
-#
-# Each entry maps a domain string to a callable:
-#   handler(cleaned_vendor_url: str) -> str | None
-# Return a fully-formed OA redirector URL if a deep link can be constructed,
-# or None to fall back to the confirmed entry point from VENDOR_TABLE.
-# ---------------------------------------------------------------------------
+  .output-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #2d3348;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .output-header-left {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #6b7494;
+  }
+  .output-actions { display: flex; gap: 8px; }
+  .btn-copy, .btn-dl {
+    background: #f0f4ff;
+    color: #1a3a6b;
+    border: 1px solid #a0b4d8;
+    border-radius: 3px;
+    padding: 5px 12px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-copy:hover, .btn-dl:hover { background: #ffffff; color: #005b99; border-color: #005b99; }
 
-def _ebookcentral_deep_link(url: str) -> str | None:
-    """
-    Preserve EbookCentral title-level deep links.
+  #output-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.8;
+  }
 
-    Recognises:
-      .../lib/waikato/detail.action?docID=XXXXXXX
-      .../lib/waikato/reader.action?docID=XXXXXXX
+  .output-placeholder {
+    color: #3d4560;
+    padding-top: 40px;
+    text-align: center;
+    font-size: 0.8rem;
+    line-height: 2;
+  }
 
-    Returns an OA-wrapped deep link when docID is present, otherwise None
-    (caller falls back to the confirmed entry point).
-    """
-    # Must contain a docID parameter to be worth deep-linking.
-    if not re.search(r"[?&]docID=\d+", url, re.IGNORECASE):
-        return None
+  .result-block {
+    margin-bottom: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid #232840;
+  }
+  .result-block:last-child { border-bottom: none; }
 
-    # Normalise: ensure the URL uses the canonical lib/waikato path.
-    # If for any reason the lib path is absent, still wrap what we have.
-    return OA_PREFIX + quote(url, safe="")
+  .result-line { padding: 2px 0; word-break: break-all; }
+  .result-ok { color: #7dd3a8; }
+  .result-confirmed { color: #7ab8e8; }
+  .result-warn { color: #f0a050; }
+  .result-skip { color: #e07070; }
+  .result-repair { color: #c8a0e8; }
 
+  .result-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .tag-ok { background: #1a3d2e; color: #7dd3a8; }
+  .tag-confirmed { background: #1a2e4a; color: #7ab8e8; }
+  .tag-warn { background: #3d2e10; color: #f0a050; }
+  .tag-skip { background: #3d1010; color: #e07070; }
+  .tag-repair { background: #2a1a3d; color: #c8a0e8; }
 
-DEEP_LINK_HANDLERS: dict[str, object] = {
-    "ebookcentral.proquest.com": _ebookcentral_deep_link,
+  .result-note {
+    font-size: 0.68rem;
+    color: #5a6480;
+    padding-left: 8px;
+    display: block;
+  }
+  .result-note.note-confirmed { color: #4a7090; }
+  .result-note.note-repair { color: #7a5a90; }
+
+  .result-sublabel {
+    font-size: 0.65rem;
+    color: #4a5470;
+    margin-right: 4px;
+  }
+
+  .summary-bar {
+    padding: 10px 24px;
+    border-top: 1px solid #2d3348;
+    display: flex;
+    gap: 20px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: #6b7494;
+  }
+  .summary-bar span { color: #aab8e0; }
+
+  details {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel);
+  }
+  summary {
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    color: #444;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  summary::before { content: '▶'; font-size: 0.6rem; color: #999; transition: transform 0.2s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  .help-body {
+    padding: 0 14px 14px;
+    font-size: 0.78rem;
+    line-height: 1.7;
+    color: #555;
+  }
+  .help-body code {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    background: #f0ede8;
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+  .help-body ul { padding-left: 18px; margin-top: 6px; }
+  .help-body li { margin-bottom: 4px; }
+  .help-body .mode-section { margin-top: 10px; }
+  .help-body .mode-title {
+    font-weight: 600;
+    color: #333;
+    font-size: 0.78rem;
+    margin-bottom: 4px;
+  }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+    .right { min-height: 400px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OpenAthens URL Converter</h1>
+  <span>University of Waikato Library</span>
+</header>
+
+<div class="main">
+  <!-- LEFT -->
+  <div class="left">
+    <div>
+      <div class="section-label">Conversion mode</div>
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="ezproxy" onclick="setMode('ezproxy', this)">EZproxy → OpenAthens</button>
+        <button class="mode-tab" data-mode="plain" onclick="setMode('plain', this)">Plain URL → OpenAthens</button>
+        <button class="mode-tab" data-mode="repair" onclick="setMode('repair', this)">Repair broken OA link</button>
+        <button class="mode-tab" data-mode="strip" onclick="setMode('strip', this)">Strip to vendor URL</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span id="input-label">Input — one URL per line</span>
+        <span style="font-weight:400;color:#999;font-size:0.68rem;letter-spacing:0" id="batch-limit-label">Max 2,000 URLs per batch</span>
+      </div>
+      <textarea id="input-urls" placeholder="Paste URLs here, one per line.
+Examples:
+https://link-springer-com.ezproxy.waikato.ac.nz/article/...
+https://ezproxy.waikato.ac.nz/login?qurl=https%3A%2F%2F...
+https://www.sciencedirect.com/science/article/..."></textarea>
+    </div>
+
+    <div class="btn-row">
+      <button class="primary" onclick="convert()">Convert</button>
+      <button class="secondary" onclick="clearAll()">Clear</button>
+      <label class="secondary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px" id="upload-label">
+        Upload file
+        <input type="file" id="file-upload" accept=".txt,.csv" style="display:none" onchange="handleUpload(event)">
+      </label>
+      <div class="stats" id="input-stats"></div>
+    </div>
+    <div id="limit-error" style="display:none;font-size:0.78rem;color:#8b1a1a;background:#fff0f0;border:1px solid #f0c0c0;border-radius:4px;padding:8px 12px"></div>
+
+    <details>
+      <summary>What this tool handles</summary>
+      <div class="help-body">
+
+        <div class="mode-section">
+          <div class="mode-title">EZproxy → OpenAthens</div>
+          <ul>
+            <li><strong>Proxied hostnames:</strong> <code>vendor-host.ezproxy.waikato.ac.nz</code> → restores <code>vendor.host</code></li>
+            <li><strong>Login wrappers:</strong> strips <code>/login?url=</code> and <code>/login?qurl=</code></li>
+            <li><strong>Double-wrapped:</strong> login wrapper pointing at another EZproxy URL — both layers stripped</li>
+            <li><strong>Google redirects:</strong> extracts the inner EZproxy URL from <code>google.com/url?q=</code></li>
+            <li><strong>HTML-encoded ampersands:</strong> <code>&amp;amp;</code> decoded to <code>&amp;</code> throughout the URL</li>
+            <li><strong>Table lookup:</strong> if vendor domain matches a confirmed entry, uses the institutional entry point URL rather than the raw content URL</li>
+          </ul>
+        </div>
+
+        <div class="mode-section">
+          <div class="mode-title">Plain URL → OpenAthens</div>
+          <ul>
+            <li>Wraps any plain vendor URL in the OpenAthens redirector</li>
+            <li><strong>Table lookup:</strong> if vendor domain matches a confirmed entry, substitutes the institutional entry point URL</li>
+            <li>Falls back to wrapping the input URL if vendor is not in the table</li>
+          </ul>
+        </div>
+
+        <div class="mode-section">
+          <div class="mode-title">Repair broken OA link</div>
+          <ul>
+            <li>Accepts a broken <code>go.openathens.net</code> or <code>proxy.openathens.net</code> URL</li>
+            <li>Diagnoses common failure patterns: double-encoding, wrong institution scope, missing or malformed <code>url=</code> parameter</li>
+            <li><strong>Table lookup:</strong> if vendor domain is recognised, replaces with the confirmed institutional entry point</li>
+            <li>Returns a corrected URL and a plain-text explanation of what was wrong</li>
+            <li>Also accepts non-OA vendor URLs in this mode — treats them as needing conversion</li>
+          </ul>
+        </div>
+
+        <div class="mode-section">
+          <div class="mode-title">Strip to vendor URL</div>
+          <ul>
+            <li>Removes all proxy and OpenAthens wrapping to recover the bare vendor URL</li>
+            <li>Handles <code>go.openathens.net</code> redirector URLs, <code>proxy.openathens.net</code> login URLs, EZproxy login wrappers, and proxied hostnames</li>
+            <li>Returns a clean <code>https://vendor.com/...</code> URL you can visit directly to test SP-initiated ("Sign in via your institution") SAML flows</li>
+            <li>Identifies the vendor by name from the confirmed entry point table where possible</li>
+            <li>Useful for triage: confirms whether an issue is at the vendor WAYF / SP side rather than the OA redirector</li>
+          </ul>
+        </div>
+
+        <div class="mode-section">
+          <div class="mode-title">Confirmed entry point table</div>
+          <ul>
+            <li>107 University of Waikato vendors with confirmed, tested OpenAthens URLs</li>
+            <li>Covers standard redirector URLs and custom SAML/non-standard entry points</li>
+            <li>Takes priority over mechanically constructed URLs in all modes</li>
+          </ul>
+        </div>
+
+        <div class="mode-section">
+          <div class="mode-title">Skip-listed vendors</div>
+          <ul>
+            <li>Some vendors cannot use OpenAthens and are flagged as <strong>SKIP</strong> rather than converted</li>
+            <li>Includes Westlaw (REANZ Tuakiri SSO), incompatible vendors (Times Higher Education, NBR, Journal Surf, NZ Antarctic Society), and vendors with incomplete or deferred OA setup (Academy of Management, Trade Law Guide, Pocketmags, Disability Busters)</li>
+            <li>The notes column explains why each was skipped</li>
+          </ul>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <div class="output-header">
+      <div class="output-header-left">Output</div>
+      <div class="output-actions">
+        <button class="btn-copy" onclick="copyOutput()">Copy URLs</button>
+        <button class="btn-dl" onclick="downloadOutput()">Download .csv</button>
+      </div>
+    </div>
+
+    <div id="output-area">
+      <div class="output-placeholder">
+        Converted URLs will appear here.<br>
+        <span style="font-size:0.7rem">Blue = confirmed entry point · Green = converted / stripped · Orange = converted with warning · Purple = repaired · Red = skipped</span>
+      </div>
+    </div>
+
+    <div id="summary-bar" style="display:none;border-top:1px solid #2d3348;padding:16px 24px;font-family:var(--mono);font-size:0.72rem;">
+      <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#6b7494;margin-bottom:10px">Conversion Report</div>
+      <table style="width:100%;border-collapse:collapse;color:#8899cc">
+        <tr style="border-bottom:1px solid #2d3348">
+          <td style="padding:4px 0;color:#6b7494">Confirmed entry point used</td>
+          <td style="text-align:right;padding:4px 0"><span id="s-confirmed" style="color:#7ab8e8">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#4a5470" id="s-confirmed-pct"></td>
+        </tr>
+        <tr style="border-bottom:1px solid #2d3348">
+          <td style="padding:4px 0;color:#6b7494">Converted cleanly</td>
+          <td style="text-align:right;padding:4px 0"><span id="s-ok" style="color:#7dd3a8">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#4a5470" id="s-ok-pct"></td>
+        </tr>
+        <tr style="border-bottom:1px solid #2d3348">
+          <td style="padding:4px 0;color:#6b7494">Converted with warnings</td>
+          <td style="text-align:right;padding:4px 0"><span id="s-warn" style="color:#f0a050">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#4a5470" id="s-warn-pct"></td>
+        </tr>
+        <tr style="border-bottom:1px solid #2d3348">
+          <td style="padding:4px 0;color:#6b7494">Repaired</td>
+          <td style="text-align:right;padding:4px 0"><span id="s-repair" style="color:#c8a0e8">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#4a5470" id="s-repair-pct"></td>
+        </tr>
+        <tr style="border-bottom:1px solid #3d4560">
+          <td style="padding:4px 0;color:#aab8e0;font-weight:600">Total converted</td>
+          <td style="text-align:right;padding:4px 0;color:#aab8e0;font-weight:600"><span id="s-converted">0</span></td>
+          <td style="text-align:right;padding:4px 0 4px 16px;color:#6b7494" id="s-converted-pct"></td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0 4px;color:#6b7494">Not converted (skipped)</td>
+          <td style="text-align:right;padding:6px 0 4px"><span id="s-skip" style="color:#e07070">0</span></td>
+          <td style="text-align:right;padding:6px 0 4px 16px;color:#4a5470" id="s-skip-pct"></td>
+        </tr>
+        <tr style="border-top:1px solid #3d4560">
+          <td style="padding:4px 0;color:#aab8e0;font-weight:600">Total processed</td>
+          <td style="text-align:right;padding:4px 0;color:#aab8e0;font-weight:600" colspan="2"><span id="s-total">0</span></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const OA_PREFIX = 'https://go.openathens.net/redirector/waikato.ac.nz?url=';
+const EZPROXY_HOST = 'ezproxy.waikato.ac.nz';
+const OA_SCOPE = 'waikato.ac.nz';
+
+let currentMode = 'ezproxy';
+let convertedResults = [];
+
+// ---- Confirmed vendor entry point table ----
+// Key: domain fragment (lowercase) to match against vendor URL
+// Value: confirmed OpenAthens URL for University of Waikato
+const VENDOR_TABLE = [
+  { domains: ['acm.org'], name: 'ACM Digital Library', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.acm.org%2Fdl%2F' },
+  { domains: ['science.org', 'sciencemag.org'], name: 'AAAS / Science.org', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.science.org%2F' },
+  { domains: ['pubs.acs.org'], name: 'ACS Publications', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.acs.org%2Fsearch%2Fadvanced' },
+  { domains: ['pubs.aip.org'], name: 'AIP Publishing', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.aip.org%2Fpages%2Fjournals' },
+  { domains: ['amdigital.co.uk'], name: 'Adam Matthew Digital', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.firstworldwar.amdigital.co.uk' },
+  { domains: ['aeaweb.org'], name: 'American Economic Association', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.aeaweb.org%2Fjournals' },
+  { domains: ['journals.physiology.org'], name: 'American Physiological Society', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.physiology.org' },
+  { domains: ['psycnet.apa.org'], name: 'APA / PsycNET', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpsycnet.apa.org%2F' },
+  { domains: ['ascelibrary.org'], name: 'ASCE', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fascelibrary.org%2Fjournals' },
+  { domains: ['mathscinet.ams.org'], name: 'AMS MathSciNet', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmathscinet.ams.org%2Fmathscinet' },
+  { domains: ['annualreviews.org'], name: 'Annual Reviews', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.annualreviews.org%2F' },
+  { domains: ['journals.aps.org'], name: 'APS Journals', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.aps.org%2Farchive%2F' },
+  { domains: ['journals.asm.org'], name: 'ASM Journals', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.asm.org' },
+  { domains: ['asmedigitalcollection.asme.org'], name: 'ASME Digital Collection', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fasmedigitalcollection.asme.org%2Fjournals' },
+  { domains: ['compass.astm.org', 'astm.org'], name: 'ASTM Compass', url: 'https://iam.astm.org/sso/saml2/0oaupiq0svm9luOS84x7?fromURI=https://compass.astm.org' },
+  { domains: ['asia-studies.com'], name: 'Asia Studies Full-Text Online', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=http%3A%2F%2Fasia-studies.com%2F' },
+  { domains: ['bloomsburycollections.com'], name: 'Bloomsbury Digital Resources', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.bloomsburycollections.com%2Fhome' },
+  { domains: ['bwb.co.nz'], name: 'Bridget Williams e-Books', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fbwbtextscollection.bwb.co.nz' },
+  { domains: ['brill.com'], name: 'Brill Online', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fbrill.com' },
+  { domains: ['browzine.com'], name: 'BrowZine', url: 'https://browzine.com/libraries/463/subjects' },
+  { domains: ['cabells.com'], name: 'Cabells Journalytics', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fcabells.com' },
+  { domains: ['cambridge.org'], name: 'Cambridge Core', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.cambridge.org%2Fcore' },
+  { domains: ['energynews.co.nz'], name: 'Capital Letter / Energy News', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fenergynews.co.nz' },
+  { domains: ['scifinder-n.cas.org', 'cas.org'], name: 'CAS SciFinder', url: 'https://sso.cas.org/sp/startSSO.ping?PartnerIdpId=https%3A%2F%2Fidp.waikato.ac.nz%2Fentity&TargetResource=https%3A%2F%2Fscifinder-n.cas.org%2F' },
+  { domains: ['gale.com', 'link.gale.com'], name: 'Cengage / Gale', url: 'https://link.gale.com/apps/AONE?u=waikato' },
+  { domains: ['chicagomanualofstyle.org'], name: 'Chicago Manual of Style Online', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.chicagomanualofstyle.org' },
+  { domains: ['journals.uchicago.edu'], name: 'Chicago Journals', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.journals.uchicago.edu%2F' },
+  { domains: ['clinicalkey.com'], name: 'ClinicalKey Student', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.clinicalkey.com%2Fstudent%2Fnursing' },
+  { domains: ['credoreference.com'], name: 'Credo Reference', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fsearch.credoreference.com' },
+  { domains: ['connectsci.au'], name: 'CSIRO / ConnectSci', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fconnectsci.au%2Fwr' },
+  { domains: ['morningstar.com.au', 'datanalysis.morningstar'], name: 'DatAnalysis', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fdatanalysis.morningstar.com.au%2Faf%2Fdathome%3Fxtm-licensee%3Ddatpremium' },
+  { domains: ['degruyterbrill.com', 'degruyter.com'], name: 'De Gruyter / De Gruyter Brill', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fdegruyterbrill.com' },
+  { domains: ['digitaltheatreplus.com'], name: 'Digital Theatre Plus', url: 'https://auth.digitaltheatreplus.com/sso/saml2/0oavwa66z2j634owi4x7' },
+  { domains: ['docuseek2.com'], name: 'Docuseek', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fdocuseek2.com' },
+  { domains: ['dukeupress.edu'], name: 'Duke University Press', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fread.dukeupress.edu' },
+  { domains: ['ebookcentral.proquest.com'], name: 'EBookCentral (ProQuest)', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Febookcentral.proquest.com%2Flib%2Fwaikato%2F' },
+  { domains: ['research.ebsco.com'], name: 'EBSCO / Research EBSCO', url: 'https://research.ebsco.com/c/fu2ghl' },
+  { domains: ['ebscohost.com'], name: 'EBSCO DynaMed', url: 'https://search.ebscohost.com/login.aspx?authtype=ip,sso&custid=s4804380&groupid=main&profid=dmp' },
+  { domains: ['euppublishing.com'], name: 'Edinburgh University Press', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.euppublishing.com%2Fdoi%2F10.3366%2Fircl.2025.0638' },
+  { domains: ['elgaronline.com'], name: 'ElgarOnline', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Felgaronline.com' },
+  { domains: ['emerald.com'], name: 'Emerald Insight', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.emerald.com%2Finsight' },
+  { domains: ['academic.eb.com', 'britannica.com'], name: 'Encyclopaedia Britannica Academic', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Facademic.eb.com' },
+  { domains: ['etv.org.nz'], name: 'ETV', url: 'https://login.etv.org.nz/etv/login?sso_domain=waikato.ac.nz' },
+  { domains: ['euromonitor.com'], name: 'Euromonitor', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Feuromonitor.com' },
+  { domains: ['exacteditions.com'], name: 'Exact Editions', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fexacteditions.com' },
+  { domains: ['ft.com'], name: 'Financial Times', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fft.com' },
+  { domains: ['geoscienceworld.org', 'pubs.geoscienceworld.org'], name: 'GeoScienceWorld', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.geoscienceworld.org' },
+  { domains: ['guilfordjournals.com'], name: 'Guilford Periodicals Online', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fguilfordjournals.com' },
+  { domains: ['heinonline.org'], name: 'HeinOnline', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fheinonline.org%2FHOL%2FWelcome' },
+  { domains: ['hstalks.com'], name: 'Henry Stewart Talks', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fhstalks.com' },
+  { domains: ['humankinetics.com'], name: 'Human Kinetics', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.humankinetics.com' },
+  { domains: ['iclr.co.uk'], name: 'ICLR', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Ficlr.co.uk' },
+  { domains: ['ieeexplore.ieee.org'], name: 'IEEE Xplore', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fieeexplore.ieee.org' },
+  { domains: ['igi-global.com'], name: 'IGI Global', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.igi-global.com' },
+  { domains: ['impan.pl'], name: 'IMPAN', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.impan.pl%2Fen%2Fpublishing-house%2Fjournals-and-series%2Facta-arithmetica%2Fall%2F207%2F1' },
+  { domains: ['inderscienceonline.com'], name: 'Inderscience Online', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Finderscienceonline.com' },
+  { domains: ['informit.org'], name: 'Informit', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Finformit.org' },
+  { domains: ['intellectdiscover.com'], name: 'Intellect Discover / Ingenta Connect', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fintellectdiscover.com%2F' },
+  { domains: ['int-res.com'], name: 'Inter-Research Science Center', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fint-res.com' },
+  { domains: ['iopscience.iop.org'], name: 'IOPscience', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fiopscience.iop.org' },
+  { domains: ['ipasource.com'], name: 'IPA Source', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.ipasource.com%2Flogin%2Funiversity-of-waikato%2F' },
+  { domains: ['jstor.org'], name: 'JSTOR', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.jstor.org%2F' },
+  { domains: ['plants.jstor.org'], name: 'JSTOR Global Plants', url: 'https://proxy.openathens.net/login?qurl=https%3A%2F%2Fplants.jstor.org%2F&entityID=https%3A%2F%2Fidp.waikato.ac.nz%2Fentity' },
+  { domains: ['jusp.jisc.ac.uk'], name: 'JUSP', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjusp.jisc.ac.uk%2Flogin%2F' },
+  { domains: ['kanopy.com'], name: 'Kanopy', url: 'https://waikato.kanopy.com/' },
+  { domains: ['knowledge-basket.co.nz'], name: 'Knowledge Basket', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.knowledge-basket.co.nz%2Fdatabases%2Fnewztext-uni%2Fsearch-newztext%2F' },
+  { domains: ['lexis.com', 'lexisnexis.com'], name: 'LexisNexis Advance', url: 'https://advance.lexis.com/nz?federationidp=HC3SRN51745' },
+  { domains: ['procedures.lww.com'], name: 'Lippincott Procedures', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fprocedures.lww.com%2Flnp%2Fid%2FNZ' },
+  { domains: ['advisor.lww.com'], name: 'Lippincott Solutions', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fadvisor.lww.com%2Flna%2Fid%2FUOW' },
+  { domains: ['liverpooluniversitypress.co.uk'], name: 'Liverpool University Press', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.liverpooluniversitypress.co.uk%2Floi%2Fwhpeh%2Fgroup%2Fd2020.y2023' },
+  { domains: ['lrb.co.uk'], name: 'London Review of Books', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.lrb.co.uk' },
+  { domains: ['magpies.net.au'], name: 'Magpies', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmagpies.net.au' },
+  { domains: ['maorilawreview.co.nz'], name: 'Māori Law Review', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmaorilawreview.co.nz' },
+  { domains: ['advantage.marketline.com'], name: 'MarketLine Advantage', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fadvantage.marketline.com%2F' },
+  { domains: ['accesspharmacy.mhmedical.com'], name: 'McGraw-Hill AccessPharmacy', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Faccesspharmacy.mhmedical.com%2F' },
+  { domains: ['microbiologyresearch.org'], name: 'Microbiology Society', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.microbiologyresearch.org%2Fcontent%2Fjournal%2Fijsem%2F76%2F1' },
+  { domains: ['direct.mit.edu'], name: 'MIT Press Direct', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fdirect.mit.edu' },
+  { domains: ['nature.com'], name: 'Nature', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nature.com%2F' },
+  { domains: ['nber.org'], name: 'NBER', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nber.org%2Fpapers%2F' },
+  { domains: ['pubs.nctm.org'], name: 'NCTM', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.nctm.org' },
+  { domains: ['naxosmusiclibrary.com'], name: 'Naxos Music Library', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwaikato.naxosmusiclibrary.com' },
+  { domains: ['newleftreview.org'], name: 'New Left Review', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fnewleftreview.org' },
+  { domains: ['nzgeo.com'], name: 'New Zealand Geographic', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nzgeo.com' },
+  { domains: ['companyresearch.nzx.com'], name: 'NZX', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fcompanyresearch.nzx.com%2Fdeep_ar%2F' },
+  { domains: ['noids.nz'], name: 'Notes on Injectable Drugs', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.noids.nz' },
+  { domains: ['cdnsciencepub.com'], name: 'NRC Research Press / Canadian Science Publishing', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fcdnsciencepub.com' },
+  { domains: ['nzcer.org.nz'], name: 'NZCER', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.nzcer.org.nz%2Fjournals%2F' },
+  { domains: ['oece.nz'], name: 'NZ Int. Research in Early Childhood Education', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Foece.nz%2Fmembers%2Fresearch%2F2019-nzirece-journal-issue-1%2Findigenous-early-childhood-education%2F' },
+  { domains: ['worldcat.org', 'account.worldcat.org'], name: 'OCLC WorldCat', url: 'https://waikatouni.account.worldcat.org/account' },
+  { domains: ['openbookpublishers.com'], name: 'Open Book Publishers', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.openbookpublishers.com%2Fbooks' },
+  { domains: ['ovidsp.ovid.com', 'ovid.com'], name: 'Ovid Technologies', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fovidsp.ovid.com%2Fovidweb.cgi%3FT%3DJS%26NEWS%3Dn%26CSC%3DY%26PAGE%3Dmain%26D%3Doemezd' },
+  { domains: ['academic.oup.com'], name: 'Oxford Academic', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Facademic.oup.com%2F' },
+  { domains: ['oxfordartonline.com'], name: 'Oxford Art Online', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordartonline.com%2F' },
+  { domains: ['opil.ouplaw.com'], name: 'Oxford Law (OPIL)', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fopil.ouplaw.com%2Fhome%2FOHT' },
+  { domains: ['oxfordmusiconline.com'], name: 'Oxford Music Online', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordmusiconline.com%2F' },
+  { domains: ['oxfordreference.com'], name: 'Oxford Reference', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordreference.com%2F' },
+  { domains: ['oxfordscholarlyeditions.com'], name: 'Oxford Scholarly Editions', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oxfordscholarlyeditions.com' },
+  { domains: ['veryshortintroductions.com'], name: 'Oxford Very Short Introductions', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fveryshortintroductions.com' },
+  { domains: ['oed.com'], name: 'Oxford English Dictionary', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.oed.com%2F' },
+  { domains: ['philpapers.org'], name: 'PhilPapers', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fphilpapers.org' },
+  { domains: ['pdcnet.org'], name: 'Philosophy Documentation Center', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpdcnet.org' },
+  { domains: ['philosophynow.org'], name: 'Philosophy Now', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fphilosophynow.org' },
+  { domains: ['pnas.org'], name: 'PNAS', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpnas.org' },
+  { domains: ['thepolynesiansociety.org'], name: 'The Polynesian Society', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fthepolynesiansociety.org' },
+  { domains: ['portlandpress.com'], name: 'Portland Press', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fportlandpress.com' },
+  { domains: ['pressreader.com'], name: 'PressReader', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.pressreader.com' },
+  { domains: ['muse.jhu.edu'], name: 'Project MUSE', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmuse.jhu.edu' },
+  { domains: ['proquest.com'], name: 'ProQuest / Alexander Street', url: 'https://www.proquest.com/anznews/fromDatabasesLayer?accountid=17287' },
+  { domains: ['psychiatryonline.org'], name: 'PsychiatryOnline', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpsychiatryonline.org%2F' },
+  { domains: ['jove.com'], name: 'JoVE', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjove.com' },
+  { domains: ['pubs.rsc.org'], name: 'Royal Society of Chemistry', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fpubs.rsc.org%2Fen%2Fjournals' },
+  { domains: ['royalsocietypublishing.org'], name: 'Royal Society Publishing', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Froyalsocietypublishing.org' },
+  { domains: ['journals.sagepub.com'], name: 'SAGE Journals', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fjournals.sagepub.com' },
+  { domains: ['methods.sagepub.com'], name: 'Sage Research Methods', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fmethods.sagepub.com%2F' },
+  { domains: ['scopus.com'], name: 'Scopus', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.scopus.com%2F' },
+  { domains: ['sciencedirect.com'], name: 'ScienceDirect', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.sciencedirect.com%2F' },
+  { domains: ['scival.com'], name: 'SciVal', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.scival.com' },
+  { domains: ['scientificamerican.com'], name: 'Scientific American', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fscientificamerican.com' },
+  { domains: ['spiedigitallibrary.org'], name: 'SPIE Digital Library', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fspiedigitallibrary.org' },
+  { domains: ['link.springer.com', 'springer.com'], name: 'Springer Nature Link', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Flink.springer.com%2F' },
+  { domains: ['standards.govt.nz'], name: 'Standards New Zealand', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fstandards.govt.nz%2Fip-check' },
+  { domains: ['tandfonline.com'], name: 'Taylor & Francis Online', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.tandfonline.com%2F' },
+  { domains: ['taylorfrancis.com'], name: 'Taylor & Francis Books', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.taylorfrancis.com%2F' },
+  { domains: ['chronicle.com'], name: 'The Chronicle of Higher Education', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.chronicle.com' },
+  { domains: ['ucpress.edu'], name: 'University of California Press', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fucpress.edu' },
+  { domains: ['vitalsource.com'], name: 'VitalSource', url: 'https://bc.vitalsource.com/tenants/openathens/bookshelf' },
+  { domains: ['warc.com'], name: 'WARC', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.warc.com' },
+  { domains: ['wheelers.co'], name: 'Wheelers ePlatform', url: 'https://waikatolibrary.wheelers.co/' },
+  { domains: ['onlinelibrary.wiley.com', 'wiley.com'], name: 'Wiley Online Library', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fonlinelibrary.wiley.com%2F' },
+  { domains: ['iknowconnect.cch.com'], name: 'Wolters Kluwer / iKnowConnect', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fiknowconnect.cch.com' },
+  { domains: ['reotupu.co.nz'], name: 'Wordstream / ReoTupu', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.reotupu.co.nz%2Fwslivewakareo%2FDefault.aspx' },
+  { domains: ['worldscientific.com'], name: 'World Scientific Publishing', url: 'https://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fworldscientific.com' },
+];
+
+// ---- Deep-link handlers for vendors whose source URLs carry meaningful ----
+// path/query information worth preserving (e.g. a specific document ID),
+// where the confirmed entry point alone would discard it.
+// Each handler: (cleanedVendorUrl) => string|null
+// Return a fully-formed output URL to preserve the deep link, or null to
+// fall back to the vendor's confirmed entry point / deepLinkable wrapping.
+const DEEP_LINK_HANDLERS = {
+  'proquest.com': function(url) {
+    // Preserve ProQuest document-level deep links (e.g. dissertations and
+    // theses, articles) that carry a docview ID.
+    // ProQuest is a federated resource (no OpenAthens redirector prefix —
+    // confirmed by Library Systems 30/06/2026). The vendor's own permalink
+    // carries the account ID needed for federated auth, so the cleaned URL
+    // is returned as-is rather than wrapped or substituted.
+    if (!/\/docview\/\d+/i.test(url)) return null;
+    return url;
+  }
+};
+
+function applyDeepLinkHandler(domainKey, url) {
+  const handler = DEEP_LINK_HANDLERS[domainKey];
+  if (!handler) return null;
+  return handler(url);
 }
 
+// Look up a vendor URL against the confirmed entry point table.
+// Returns { name, url, deepLinkable, domain } or null.
+// deepLinkable: true if the vendor uses the standard go.openathens.net redirector,
+// meaning a deep content URL can be wrapped directly.
+// false for vendors with custom SAML/non-standard entry points where deep linking
+// via the standard redirector won't work (Kanopy, LexisNexis, ASTM etc.)
+// domain: the specific matched domain string, used as the key into
+// DEEP_LINK_HANDLERS for vendors needing custom deep-link preservation.
+function lookupVendor(url) {
+  const lower = url.toLowerCase();
+  const OA_REDIRECTOR = 'https://go.openathens.net/redirector/waikato.ac.nz?url=';
+  // plants.jstor.org must be checked before jstor.org
+  const sorted = [...VENDOR_TABLE].sort((a, b) => {
+    const aMax = Math.max(...a.domains.map(d => d.length));
+    const bMax = Math.max(...b.domains.map(d => d.length));
+    return bMax - aMax;
+  });
+  for (const entry of sorted) {
+    for (const domain of entry.domains) {
+      if (lower.includes(domain.toLowerCase())) {
+        return {
+          name: entry.name,
+          url: entry.url,
+          deepLinkable: entry.url.startsWith(OA_REDIRECTOR),
+          domain: domain
+        };
+      }
+    }
+  }
+  return null;
+}
 
-def apply_deep_link_handler(domain_key: str, url: str) -> str | None:
-    """
-    Look up and apply a deep-link handler for the given domain key.
-    Returns a deep-linked OA URL, or None if no handler exists or the
-    handler declines (returns None) for this URL.
-    """
-    handler = DEEP_LINK_HANDLERS.get(domain_key)
-    if handler is None:
-        return None
-    return handler(url)
+// ---- Vendors that must NOT be converted to OpenAthens ----
+// These remain on their existing SSO or other access mechanisms.
+const SKIP_VENDORS = [
+  { domains: ['westlaw.com', 'anzlaw.thomsonreuters.com', 'nzlaw.thomsonreuters.com', 'signon.thomsonreuters.com'],
+    name: 'Westlaw (Thomson Reuters)',
+    reason: 'Custom SAML via REANZ Tuakiri SSO — not managed via OpenAthens' },
+  { domains: ['timeshighereducation.com'],
+    name: 'Times Higher Education',
+    reason: 'Incompatible vendor — access via email domain registration only' },
+  { domains: ['journalsurf.co.nz'],
+    name: 'Learning Focus / Journal Surf',
+    reason: 'Incompatible vendor — shared username/password only' },
+  { domains: ['antarcticsociety.org.nz'],
+    name: 'NZ Antarctic Society',
+    reason: 'Incompatible vendor — shared username/password only' },
+  { domains: ['nbr.co.nz'],
+    name: 'National Business Review',
+    reason: 'Incompatible vendor — student domain access, staff individual licences' },
+  { domains: ['app.disabilitybusters.com'],
+    name: 'Disability Busters',
+    reason: 'Not required — domain account self-registration only' },
+  { domains: ['pocketmags.com'],
+    name: 'Pocketmags',
+    reason: 'Not required — current access via username/password' },
+  { domains: ['journals.aom.org', 'aom.org'],
+    name: 'Academy of Management',
+    reason: 'Not required — OpenAthens setup incomplete' },
+  { domains: ['tradelawguide.com'],
+    name: 'Trade Law Guide',
+    reason: 'Not required — vendor must add OA proxy IP before activation' },
+];
 
+// Look up a URL against the skip-vendor table.
+// Returns { name, reason } or null.
+function lookupSkipVendor(url) {
+  const lower = url.toLowerCase();
+  const sorted = [...SKIP_VENDORS].sort((a, b) => {
+    const aMax = Math.max(...a.domains.map(d => d.length));
+    const bMax = Math.max(...b.domains.map(d => d.length));
+    return bMax - aMax;
+  });
+  for (const entry of sorted) {
+    for (const domain of entry.domains) {
+      if (lower.includes(domain.toLowerCase())) {
+        return { name: entry.name, reason: entry.reason };
+      }
+    }
+  }
+  return null;
+}
 
-# ---------------------------------------------------------------------------
-# Vendors that must NOT be converted to OpenAthens.
-# These remain on their existing SSO or other access mechanisms.
-# Each entry: (domains_list, vendor_name, reason)
-# ---------------------------------------------------------------------------
-SKIP_VENDORS = [
-    (
-        ["westlaw.com", "westlaw.co.nz", "nzlaw.thomsonreuters.com", "signon.thomsonreuters.com"],
-        "Westlaw (Thomson Reuters)",
-        "Custom SAML via REANZ Tuakiri SSO — not managed via OpenAthens"
-    ),
-    (
-        ["timeshighereducation.com"],
-        "Times Higher Education",
-        "Incompatible vendor — access via email domain registration only"
-    ),
-    (
-        ["journalsurf.co.nz"],
-        "Learning Focus / Journal Surf",
-        "Incompatible vendor — shared username/password only"
-    ),
-    (
-        ["antarcticsociety.org.nz"],
-        "NZ Antarctic Society",
-        "Incompatible vendor — shared username/password only"
-    ),
-    (
-        ["nbr.co.nz"],
-        "National Business Review",
-        "Incompatible vendor — student domain access, staff individual licences"
-    ),
-    (
-        ["app.disabilitybusters.com"],
-        "Disability Busters",
-        "Not required — domain account self-registration only"
-    ),
-    (
-        ["pocketmags.com"],
-        "Pocketmags",
-        "Not required — current access via username/password"
-    ),
-    (
-        ["journals.aom.org", "aom.org"],
-        "Academy of Management",
-        "Not required — OpenAthens setup incomplete"
-    ),
-    (
-        ["tradelawguide.com"],
-        "Trade Law Guide",
-        "Not required — vendor must add OA proxy IP before activation"
-    ),
-]
+// ---- Mode management ----
+function setMode(mode, el) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
 
-_SORTED_SKIP = sorted(
-    SKIP_VENDORS,
-    key=lambda e: max(len(d) for d in e[0]),
-    reverse=True
-)
+  const ta = document.getElementById('input-urls');
+  const label = document.getElementById('input-label');
+  const batchLabel = document.getElementById('batch-limit-label');
 
+  if (mode === 'repair') {
+    ta.placeholder = 'Paste a broken OpenAthens URL here.\nExample:\nhttps://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.ipasource.com%2F';
+    label.textContent = 'Input — one URL per line';
+    batchLabel.textContent = 'Max 200 URLs per batch';
+  } else if (mode === 'plain') {
+    ta.placeholder = 'Paste plain vendor URLs here, one per line.\nExamples:\nhttps://www.sciencedirect.com/science/article/...\nhttps://onlinelibrary.wiley.com/doi/...';
+    label.textContent = 'Input — one URL per line';
+    batchLabel.textContent = 'Max 2,000 URLs per batch';
+  } else if (mode === 'strip') {
+    ta.placeholder = 'Paste proxied or wrapped URLs to strip back to the vendor site.\nExamples:\nhttps://go.openathens.net/redirector/waikato.ac.nz?url=https%3A%2F%2Fwww.taylorfrancis.com%2Fbooks%2F...\nhttps://ezproxy.waikato.ac.nz/login?url=https%3A%2F%2Fwww.taylorfrancis.com%2F...\nhttps://taylorfrancis-com.ezproxy.waikato.ac.nz/books/...';
+    label.textContent = 'Input — one URL per line';
+    batchLabel.textContent = 'Max 200 URLs per batch';
+  } else {
+    ta.placeholder = 'Paste URLs here, one per line.\nExamples:\nhttps://link-springer-com.ezproxy.waikato.ac.nz/article/...\nhttps://ezproxy.waikato.ac.nz/login?qurl=https%3A%2F%2F...\nhttps://www.sciencedirect.com/science/article/...';
+    label.textContent = 'Input — one URL per line';
+    batchLabel.textContent = 'Max 2,000 URLs per batch';
+  }
+}
 
-def lookup_skip_vendor(url: str) -> tuple[str, str] | None:
-    """
-    Match a URL against the skip-vendor table.
-    Returns (vendor_name, reason) or None.
-    """
-    lower = url.lower()
-    for domains, name, reason in _SORTED_SKIP:
-        for domain in domains:
-            if domain.lower() in lower:
-                return (name, reason)
-    return None
+// Update input line count
+document.getElementById('input-urls').addEventListener('input', updateInputStats);
 
+function updateInputStats() {
+  const val = document.getElementById('input-urls').value;
+  const lines = val.split('\n').filter(l => l.trim()).length;
+  const stats = document.getElementById('input-stats');
+  stats.textContent = lines ? lines + ' URL' + (lines !== 1 ? 's' : '') : '';
+  stats.style.color = lines > 2000 ? '#8b1a1a' : '#888';
+}
 
-def lookup_vendor(url: str) -> tuple[str, str, str, bool] | None:
-    """
-    Match a URL against the vendor table.
-    Returns (vendor_name, confirmed_oa_url, matched_domain, deep_linkable) or None.
-    matched_domain is the specific domain string that matched, used as the
-    key into DEEP_LINK_HANDLERS.
-    deep_linkable indicates whether the cleaned vendor URL should be wrapped
-    directly in the OA redirector rather than substituting the entry point.
-    """
-    lower = url.lower()
-    for entry in _SORTED_TABLE:
-        domains, name, oa_url = entry[0], entry[1], entry[2]
-        deep_linkable = entry[3] if len(entry) > 3 else False
-        for domain in domains:
-            if domain.lower() in lower:
-                return (name, oa_url, domain, deep_linkable)
-    return None
+function clearAll() {
+  document.getElementById('input-urls').value = '';
+  document.getElementById('input-stats').textContent = '';
+  document.getElementById('limit-error').style.display = 'none';
+  document.getElementById('file-upload').value = '';
+  document.getElementById('output-area').innerHTML = `<div class="output-placeholder">Converted URLs will appear here.<br><span style="font-size:0.7rem">Blue = confirmed entry point · Green = converted · Orange = converted with warning · Purple = repaired · Red = skipped</span></div>`;
+  document.getElementById('summary-bar').style.display = 'none';
+  convertedResults = [];
+}
 
+function handleUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    let text = e.target.result;
+    const firstLine = text.split('\n')[0] || '';
+    if (firstLine.includes(',') && !firstLine.trim().startsWith('http')) {
+      text = text.split('\n').slice(1)
+        .map(l => l.split(',')[0].replace(/^"|"$/g, '').trim())
+        .filter(l => l).join('\n');
+    } else if (firstLine.includes(',') && firstLine.trim().startsWith('http')) {
+      text = text.split('\n')
+        .map(l => l.split(',')[0].replace(/^"|"$/g, '').trim())
+        .filter(l => l).join('\n');
+    }
+    document.getElementById('input-urls').value = text;
+    updateInputStats();
+    document.getElementById('limit-error').style.display = 'none';
+  };
+  reader.readAsText(file);
+}
 
-# ---------------------------------------------------------------------------
-# URL conversion helpers
-# ---------------------------------------------------------------------------
+// ---- Core cleaning logic (EZproxy mode) ----
+function cleanEzproxyUrl(raw) {
+  let url = raw.trim();
+  const notes = [];
 
-def to_openathens(url: str) -> str:
-    return OA_PREFIX + quote(url, safe="")
+  if (url.includes('&amp;') || url.includes('&amp')) {
+    url = url.replace(/&amp;/g, '&').replace(/&amp/g, '&');
+    notes.push('HTML-encoded ampersands decoded (&amp; → &)');
+  }
 
+  const googleMatch = url.match(/^https?:\/\/(?:www\.)?google\.com\/url\?.*?(?:^|[?&])q=([^&]+)/i);
+  if (googleMatch) {
+    const inner = decodeURIComponent(googleMatch[1]);
+    notes.push('Extracted from Google redirect wrapper');
+    url = inner;
+  }
 
-def clean_ezproxy_url(raw: str) -> tuple[str, list[str]]:
-    """
-    Clean an EZproxy URL down to the plain target URL.
-    Returns (cleaned_url, notes).
-    Raises ValueError with a reason if the URL is unresolvable.
-    """
-    url = raw.strip()
-    notes = []
+  if (url.match(/location\.href/i) || url.match(/javascript:/i)) {
+    throw { skip: true, reason: 'JavaScript fragment — not a real URL' };
+  }
+  if (!url.match(/^https?:\/\//i)) {
+    throw { skip: true, reason: 'Does not start with http:// or https://' };
+  }
 
-    # 1. Decode HTML-encoded ampersands
-    if "&amp;" in url or url.endswith("&amp"):
-        url = url.replace("&amp;", "&").replace("&amp", "&")
-        notes.append("HTML-encoded ampersands decoded (&amp; to &)")
+  let unwrapCount = 0;
+  while (unwrapCount < 2) {
+    const loginMatch = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?(?:q?url=)(.+)$/i);
+    if (loginMatch) {
+      let target = loginMatch[1];
+      try { target = decodeURIComponent(target); } catch(e) {}
+      notes.push('EZproxy login wrapper stripped' + (unwrapCount > 0 ? ' (inner)' : ''));
+      url = target;
+      unwrapCount++;
+    } else {
+      break;
+    }
+  }
 
-    # 2. Handle Google redirect wrapper
-    if re.match(r"^https?://(?:www\.)?google\.com/url\?", url, re.IGNORECASE):
-        q_match = re.search(r"[?&]q=([^&]+)", url)
-        if q_match:
-            url = unquote(q_match.group(1))
-            notes.append("Extracted from Google redirect wrapper")
+  const proxyHostMatch = url.match(/^(https?:\/\/)((?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)*(?:[a-z0-9\-]+))\.ezproxy\.waikato\.ac\.nz(\/.*)?$/i);
+  if (proxyHostMatch) {
+    const scheme = proxyHostMatch[1];
+    const proxiedHost = proxyHostMatch[2];
+    const rest = proxyHostMatch[3] || '';
+    const realHost = proxiedHost.replace(/-/g, '.');
+    url = scheme + realHost + rest;
+    if (proxiedHost !== realHost) {
+      notes.push('Proxied hostname restored: ' + proxiedHost + ' → ' + realHost);
+    }
+  }
 
-    # 3. Detect broken inputs
-    if re.search(r"location\.href", url, re.IGNORECASE) or \
-       re.search(r"javascript:", url, re.IGNORECASE):
-        raise ValueError("JavaScript fragment — not a real URL")
-    if not re.match(r"^https?://", url, re.IGNORECASE):
-        raise ValueError("Does not start with http:// or https://")
+  // Strip old-style OpenAthens proxy subdomain: vendor.ap1.proxy.openathens.net
+  const oaProxyMatch = url.match(/^(https?:\/\/)((?:[\w]+-)*[\w]+)\.ap\d*\.proxy\.openathens\.net(\/.*)?$/i);
+  if (oaProxyMatch) {
+    const proxiedHost = oaProxyMatch[2];
+    const path = oaProxyMatch[3] || '/';
+    const realHost = proxiedHost.replace(/-/g, '.');
+    url = 'https://' + realHost + path;
+    notes.push('OA proxy subdomain stripped: ' + proxiedHost + ' \u2192 ' + realHost);
+  }
 
-    # 4. Strip EZproxy login wrapper — up to 2 layers
-    for _ in range(2):
-        login_match = re.match(
-            r"^https?://ezproxy\.waikato\.ac\.nz/login\?q?url=(.+)$",
-            url, re.IGNORECASE
-        )
-        if login_match:
-            target = login_match.group(1)
-            try:
-                target = unquote(target)
-            except Exception:
-                pass
-            notes.append("EZproxy login wrapper stripped")
-            url = target
-        else:
-            break
+  if (url.match(/^10\.\d{4,}\//)) {
+    url = 'https://doi.org/' + url;
+    notes.push('Bare DOI — prefixed with https://doi.org/');
+  }
 
-    # 5. Convert proxied hostname
-    proxy_match = re.match(
-        r"^(https?://)((?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)*(?:[a-z0-9\-]+))"
-        r"\.ezproxy\.waikato\.ac\.nz(/.*)?$",
-        url, re.IGNORECASE
-    )
-    if proxy_match:
-        scheme = proxy_match.group(1)
-        proxied_host = proxy_match.group(2)
-        rest = proxy_match.group(3) or ""
-        real_host = proxied_host.replace("-", ".")
-        url = scheme + real_host + rest
-        if proxied_host != real_host:
-            notes.append(f"Proxied hostname restored: {proxied_host} -> {real_host}")
+  if (!url.match(/^https?:\/\/[a-z0-9]/i)) {
+    throw { skip: true, reason: 'Could not extract a valid URL after processing' };
+  }
 
-    # 6. Handle old-style OpenAthens proxy subdomain:
-    #    vendor-host.ap1.proxy.openathens.net -> vendor.host
-    oa_proxy_match = re.match(
-        r"^(https?://)([\w\-]+)\.ap\d*\.proxy\.openathens\.net(/.*)?$",
-        url, re.IGNORECASE
-    )
-    if oa_proxy_match:
-        proxied_host = oa_proxy_match.group(2)
-        path = oa_proxy_match.group(3) or "/"
-        real_host = proxied_host.replace("-", ".")
-        url = "https://" + real_host + path
-        notes.append(f"OA proxy subdomain stripped: {proxied_host} -> {real_host}")
+  return { url, notes };
+}
 
-    # 7. Bare DOI
-    if re.match(r"^10\.\d{4,}/", url):
-        url = "https://doi.org/" + url
-        notes.append("Bare DOI — prefixed with https://doi.org/")
+function toOpenAthens(cleanUrl) {
+  return OA_PREFIX + encodeURIComponent(cleanUrl);
+}
 
-    # 8. Final sanity check
-    if not re.match(r"^https?://[a-z0-9]", url, re.IGNORECASE):
-        raise ValueError("Could not extract a valid URL after processing")
+// ---- Repair mode logic ----
+function repairOaUrl(raw) {
+  const input = raw.trim();
+  const notes = [];
+  let repairedUrl = null;
 
-    return url, notes
+  // Is it already an OA URL?
+  const isOaRedirector = /^https?:\/\/go\.openathens\.net\/redirector\//i.test(input);
+  const isOaProxy = /^https?:\/\/proxy\.openathens\.net\//i.test(input);
+  const isOaProxySubdomain = /\.ap\d*\.proxy\.openathens\.net/i.test(input);
 
+  if (isOaProxySubdomain) {
+    // Old-style OA proxy subdomain: vendor-host.ap1.proxy.openathens.net/path
+    // Strip to vendor URL and look up
+    const proxyMatch = input.match(/^(https?:\/\/)([\w\-]+)\.ap\d*\.proxy\.openathens\.net(\/.*)?$/i);
+    if (proxyMatch) {
+      const proxiedHost = proxyMatch[2];
+      const path = proxyMatch[3] || '/';
+      const realHost = proxiedHost.replace(/-/g, '.');
+      const vendorUrl = 'https://' + realHost + path;
+      notes.push('Old-style OA proxy subdomain — vendor host restored: ' + proxiedHost + ' → ' + realHost);
 
-def repair_oa_url(raw: str) -> tuple[str, str, list[str]]:
-    """
-    Diagnose and repair a broken OpenAthens URL.
-    Returns (status, repaired_url_or_empty, notes).
-    """
-    url = raw.strip()
-    notes = []
+      const skipMatch = lookupSkipVendor(vendorUrl);
+      if (skipMatch) {
+        notes.push(skipMatch.name + ': ' + skipMatch.reason);
+        return { type: 'skip', output: null, notes };
+      }
+      const match = lookupVendor(vendorUrl);
+      if (match) {
+        const deepLink = applyDeepLinkHandler(match.domain, vendorUrl);
+        if (deepLink) {
+          notes.push('Vendor recognised: ' + match.name + ' — deep link preserved');
+          return { type: 'repair', output: deepLink, notes };
+        } else if (match.deepLinkable) {
+          notes.push('Vendor recognised: ' + match.name + ' — deep link wrapped in OA redirector');
+          return { type: 'repair', output: toOpenAthens(vendorUrl), notes };
+        } else {
+          notes.push('Vendor recognised: ' + match.name + ' — uses custom auth, entry point substituted');
+          return { type: 'repair', output: match.url, notes };
+        }
+      } else {
+        repairedUrl = toOpenAthens(vendorUrl);
+        notes.push('Vendor not in confirmed table — standard redirector URL constructed');
+        return { type: 'repair', output: repairedUrl, notes };
+      }
+    }
+  }
 
-    is_oa_redirector = bool(re.match(
-        r"^https?://go\.openathens\.net/redirector/", url, re.IGNORECASE))
-    is_oa_proxy = bool(re.match(
-        r"^https?://proxy\.openathens\.net/", url, re.IGNORECASE))
-    is_oa_proxy_subdomain = bool(re.search(
-        r"\.ap\d*\.proxy\.openathens\.net", url, re.IGNORECASE))
+  if (isOaRedirector || isOaProxy) {
+    // Extract the url= parameter
+    let urlParam = null;
 
-    # Old-style OA proxy subdomain: vendor.ap1.proxy.openathens.net/path
-    if is_oa_proxy_subdomain:
-        proxy_match = re.match(
-            r"^(https?://)([\w\-]+)\.ap\d*\.proxy\.openathens\.net(/.*)?$",
-            url, re.IGNORECASE
-        )
-        if proxy_match:
-            proxied_host = proxy_match.group(2)
-            path = proxy_match.group(3) or "/"
-            real_host = proxied_host.replace("-", ".")
-            vendor_url = "https://" + real_host + path
-            notes.append(
-                f"Old-style OA proxy subdomain — vendor host restored: "
-                f"{proxied_host} -> {real_host}"
-            )
-            skip_match = lookup_skip_vendor(vendor_url)
-            if skip_match:
-                name, reason = skip_match
-                notes.append(f"{name}: {reason}")
-                return ("skip", "", notes)
-            match = lookup_vendor(vendor_url)
-            if match:
-                name, oa_url, domain_key, deep_linkable = match
-                deep = apply_deep_link_handler(domain_key, vendor_url) or (to_openathens(vendor_url) if deep_linkable else None)
-                if deep:
-                    notes.append(f"Vendor recognised: {name} — deep link preserved")
-                    return ("repaired", deep, notes)
-                notes.append(f"Vendor recognised: {name} — confirmed entry point substituted")
-                return ("repaired", oa_url, notes)
-            else:
-                notes.append("Vendor not in confirmed table — standard redirector URL constructed")
-                return ("repaired", to_openathens(vendor_url), notes)
+    const urlParamMatch = input.match(/[?&](?:q?url)=(.+?)(?:&[a-zA-Z]|$)/i);
+    if (urlParamMatch) {
+      let raw = urlParamMatch[1];
 
-    if is_oa_redirector or is_oa_proxy:
-        # Extract the url= parameter
-        url_param_match = re.search(r"[?&]q?url=(.+?)(?:&[a-zA-Z]|$)", url, re.IGNORECASE)
-        if not url_param_match:
-            notes.append("No url= parameter found in OpenAthens URL — cannot repair")
-            return ("skip", "", notes)
+      // Detect double-encoding: %253A or %252F indicate the % was encoded
+      const isDoubleEncoded = /%25[0-9a-fA-F]{2}/.test(raw);
+      if (isDoubleEncoded) {
+        raw = decodeURIComponent(raw);
+        notes.push('Double-encoded URL parameter detected and corrected (%25xx → %xx)');
+      }
 
-        raw_param = url_param_match.group(1)
+      try { urlParam = decodeURIComponent(raw); } catch(e) { urlParam = raw; }
+    }
 
-        # Detect and correct double-encoding (%253A, %252F etc.)
-        if re.search(r"%25[0-9a-fA-F]{2}", raw_param):
-            raw_param = unquote(raw_param)
-            notes.append("Double-encoded URL parameter corrected (%25xx -> %xx)")
+    // Check institution scope
+    const scopeMatch = input.match(/redirector\/([^?/]+)/i);
+    if (scopeMatch && scopeMatch[1] !== OA_SCOPE) {
+      notes.push('Wrong institution scope: "' + scopeMatch[1] + '" (expected "' + OA_SCOPE + '")');
+    }
 
-        try:
-            url_param = unquote(raw_param)
-        except Exception:
-            url_param = raw_param
+    if (!urlParam) {
+      // Missing url= parameter entirely
+      notes.push('No url= parameter found in OpenAthens URL — cannot repair');
+      return { type: 'skip', output: null, notes };
+    }
 
-        if not re.match(r"^https?://", url_param, re.IGNORECASE):
-            notes.append(f"url= parameter does not contain a valid URL: {url_param}")
-            return ("skip", "", notes)
+    if (!urlParam.match(/^https?:\/\//i)) {
+      notes.push('url= parameter does not contain a valid URL: ' + urlParam);
+      return { type: 'skip', output: null, notes };
+    }
 
-        # Check if the extracted vendor URL is on the skip list
-        skip_match = lookup_skip_vendor(url_param)
-        if skip_match:
-            name, reason = skip_match
-            notes.append(f"{name}: {reason}")
-            return ("skip", "", notes)
+    // Skip-vendor check on the extracted target URL
+    const skipMatch = lookupSkipVendor(urlParam);
+    if (skipMatch) {
+      notes.push(skipMatch.name + ': ' + skipMatch.reason);
+      return { type: 'skip', output: null, notes };
+    }
 
-        # Check institution scope
-        scope_match = re.search(r"redirector/([^?/]+)", url, re.IGNORECASE)
-        if scope_match and scope_match.group(1) != OA_SCOPE:
-            notes.append(
-                f"Wrong institution scope: \"{scope_match.group(1)}\" "
-                f"(expected \"{OA_SCOPE}\")"
-            )
+    // Now look up the vendor in the table
+    const match = lookupVendor(urlParam);
+    if (match) {
+      const deepLink = applyDeepLinkHandler(match.domain, urlParam);
+      if (deepLink) {
+        notes.push('Vendor recognised: ' + match.name + ' — deep link preserved');
+        return { type: 'repair', output: deepLink, notes };
+      }
+      notes.push('Vendor recognised: ' + match.name + ' — confirmed entry point substituted');
+      return { type: 'repair', output: match.url, notes };
+    }
 
-        # Table lookup on the extracted vendor URL
-        match = lookup_vendor(url_param)
-        if match:
-            name, oa_url, domain_key, deep_linkable = match
-            deep = apply_deep_link_handler(domain_key, url_param) or (to_openathens(url_param) if deep_linkable else None)
-            if deep:
-                notes.append(f"Vendor recognised: {name} — deep link preserved")
-                return ("repaired", deep, notes)
-            notes.append(f"Vendor recognised: {name} — confirmed entry point substituted")
-            return ("repaired", oa_url, notes)
+    // No table match — re-encode cleanly
+    const cleanRebuilt = OA_PREFIX + encodeURIComponent(urlParam);
+    if (cleanRebuilt !== input) {
+      notes.push('URL re-encoded cleanly');
+      return { type: 'repair', output: cleanRebuilt, notes };
+    }
 
-        # Re-encode cleanly
-        clean_rebuilt = to_openathens(url_param)
-        if clean_rebuilt != url:
-            notes.append("URL re-encoded cleanly")
-            return ("repaired", clean_rebuilt, notes)
+    // URL looks fine as-is, no obvious fault found
+    notes.push('No obvious encoding fault detected — URL returned as-is');
+    return { type: 'warn', output: input, notes };
+  }
 
-        notes.append("No obvious fault detected — URL returned as-is")
-        return ("warn", url, notes)
+  // Not an OA URL at all — treat as plain URL needing conversion
+  if (input.match(/^https?:\/\//i)) {
+    const skipMatch = lookupSkipVendor(input);
+    if (skipMatch) {
+      notes.push(skipMatch.name + ': ' + skipMatch.reason);
+      return { type: 'skip', output: null, notes };
+    }
+    const match = lookupVendor(input);
+    if (match) {
+      const deepLink = applyDeepLinkHandler(match.domain, input);
+      if (deepLink) {
+        notes.push('Not an OA URL — vendor recognised: ' + match.name + ' — deep link preserved');
+        return { type: 'repair', output: deepLink, notes };
+      } else if (match.deepLinkable) {
+        notes.push('Not an OA URL — vendor recognised: ' + match.name + ' — deep link wrapped in OA redirector');
+        return { type: 'repair', output: toOpenAthens(input), notes };
+      } else {
+        notes.push('Not an OA URL — vendor recognised: ' + match.name + ' — uses custom auth, entry point substituted');
+        return { type: 'repair', output: match.url, notes };
+      }
+    }
+    notes.push('Not an OA URL — wrapped in standard redirector');
+    return { type: 'repair', output: toOpenAthens(input), notes };
+  }
 
-    # Not an OA URL — treat as plain vendor URL needing conversion
-    if re.match(r"^https?://", url, re.IGNORECASE):
-        skip_match = lookup_skip_vendor(url)
-        if skip_match:
-            name, reason = skip_match
-            notes.append(f"{name}: {reason}")
-            return ("skip", "", notes)
-        match = lookup_vendor(url)
-        if match:
-            name, oa_url, domain_key, deep_linkable = match
-            deep = apply_deep_link_handler(domain_key, url) or (to_openathens(url) if deep_linkable else None)
-            if deep:
-                notes.append(f"Not an OA URL — vendor recognised: {name} — deep link preserved")
-                return ("repaired", deep, notes)
-            notes.append(f"Not an OA URL — vendor recognised: {name} — confirmed entry point used")
-            return ("repaired", oa_url, notes)
-        notes.append("Not an OA URL — wrapped in standard redirector")
-        return ("repaired", to_openathens(url), notes)
+  return { type: 'skip', output: null, notes: ['Does not appear to be a valid URL'] };
+}
 
-    return ("skip", "", ["Does not appear to be a valid URL"])
+// ---- Strip to vendor URL ----
+// Removes all proxy/OA wrapping and returns the bare vendor URL.
+// Useful for SP-initiated SAML triage: visit the result and use
+// "Sign in via your institution" to test the vendor WAYF / SP flow directly.
+function stripToVendorUrl(raw) {
+  const notes = [];
+  let url = raw.trim();
 
+  if (!url.match(/^https?:\/\//i)) {
+    return { type: 'skip', output: null, notes: ['Does not appear to be a valid URL'] };
+  }
 
-# ---------------------------------------------------------------------------
-# Main conversion dispatcher
-# ---------------------------------------------------------------------------
+  // 1. Unwrap go.openathens.net redirector
+  //    https://go.openathens.net/redirector/...?url=<encoded>
+  const isGoOa = /^https?:\/\/go\.openathens\.net\/redirector\//i.test(url);
+  const goOaMatch = isGoOa ? url.match(/[?&]url=(.+?)(?:&[a-zA-Z]|$)/i) : null;
+  if (goOaMatch) {
+    try {
+      url = decodeURIComponent(goOaMatch[1]);
+      notes.push('OpenAthens redirector wrapper removed');
+    } catch(e) {
+      return { type: 'skip', output: null, notes: ['Could not decode url= parameter: ' + goOaMatch[1]] };
+    }
+  }
 
-def convert_line(
-    raw: str,
-    plain_mode: bool = False,
-    repair_mode: bool = False
-) -> tuple[str, str, str, str]:
-    """
-    Convert a single URL.
-    Returns (source, converted_url_or_empty, status, notes_string).
-    Status: confirmed | ok | warn | repaired | skip
-    """
-    source = raw.strip()
-    if not source:
-        return ("", "", "", "")
+  // 2. Unwrap proxy.openathens.net login
+  //    https://proxy.openathens.net/login?qurl=<encoded>&entityID=...
+  const isProxyOa = /^https?:\/\/proxy\.openathens\.net\/login\?/i.test(url);
+  const proxyOaMatch = isProxyOa ? url.match(/[?&]qurl=(.+?)(?:&[a-zA-Z]|$)/i) : null;
+  if (proxyOaMatch) {
+    try {
+      url = decodeURIComponent(proxyOaMatch[1]);
+      notes.push('OpenAthens proxy login wrapper removed');
+    } catch(e) {
+      return { type: 'skip', output: null, notes: ['Could not decode qurl= parameter'] };
+    }
+  }
 
-    if repair_mode:
-        status, converted, notes = repair_oa_url(source)
-        return (source, converted, status, "; ".join(notes))
+  // 3. Unwrap EZproxy login wrapper
+  //    https://ezproxy.waikato.ac.nz/login?url=<encoded>  or  ?qurl=<encoded>
+  const ezLoginMatch = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?(?:q?url=)(.+)$/i);
+  if (ezLoginMatch) {
+    try {
+      url = decodeURIComponent(ezLoginMatch[1]);
+      notes.push('EZproxy login wrapper removed');
+    } catch(e) {
+      return { type: 'skip', output: null, notes: ['Could not decode EZproxy url/qurl parameter'] };
+    }
+    // May be double-wrapped — check if result is itself an EZproxy URL
+    const inner = url.match(/^https?:\/\/ezproxy\.waikato\.ac\.nz\/login\?(?:q?url=)(.+)$/i);
+    if (inner) {
+      try {
+        url = decodeURIComponent(inner[1]);
+        notes.push('Double EZproxy wrapper detected — inner layer also removed');
+      } catch(e) { /* leave as-is */ }
+    }
+  }
 
-    if plain_mode:
-        if not re.match(r"^https?://", source, re.IGNORECASE):
-            return (source, "", "skip", "Does not start with http:// or https://")
-        skip_match = lookup_skip_vendor(source)
-        if skip_match:
-            name, reason = skip_match
-            return (source, "", "skip", f"{name}: {reason}")
-        match = lookup_vendor(source)
-        if match:
-            name, oa_url, domain_key, deep_linkable = match
-            deep = apply_deep_link_handler(domain_key, source) or (to_openathens(source) if deep_linkable else None)
-            if deep:
-                return (source, deep, "confirmed", f"Confirmed deep link: {name}")
-            return (source, oa_url, "confirmed", f"Confirmed entry point: {name}")
-        return (source, to_openathens(source), "ok", "")
+  // 4. Unwrap EZproxy proxied hostname
+  //    https://vendor-host.ezproxy.waikato.ac.nz/path
+  //    Restore to https://vendor.host/path
+  const proxyHostMatch = url.match(/^(https?:\/\/)([^/]+)\.ezproxy\.waikato\.ac\.nz(\/.*)?$/i);
+  if (proxyHostMatch) {
+    const restoredHost = proxyHostMatch[2].replace(/-/g, '.');
+    url = proxyHostMatch[1] + restoredHost + (proxyHostMatch[3] || '');
+    notes.push('EZproxy proxied hostname restored: ' + proxyHostMatch[2] + '.ezproxy.waikato.ac.nz → ' + restoredHost);
+  }
 
-    # EZproxy mode
-    try:
-        cleaned, notes = clean_ezproxy_url(source)
-        skip_match = lookup_skip_vendor(cleaned)
-        if skip_match:
-            name, reason = skip_match
-            return (source, "", "skip", f"{name}: {reason}")
-        match = lookup_vendor(cleaned)
-        if match:
-            name, oa_url, domain_key, deep_linkable = match
-            unusual = [n for n in notes
-                       if not n.startswith("Proxied hostname restored")
-                       and n != "EZproxy login wrapper stripped"]
-            deep = apply_deep_link_handler(domain_key, cleaned) or (to_openathens(cleaned) if deep_linkable else None)
-            if deep:
-                all_notes = unusual + [f"Confirmed deep link: {name}"]
-                return (source, deep, "confirmed", "; ".join(all_notes))
-            all_notes = unusual + [f"Confirmed entry point: {name}"]
-            return (source, oa_url, "confirmed", "; ".join(all_notes))
-        unusual = [n for n in notes
-                   if not n.startswith("Proxied hostname restored")
-                   and n != "EZproxy login wrapper stripped"]
-        status = "warn" if unusual else "ok"
-        return (source, to_openathens(cleaned), status, "; ".join(unusual))
-    except ValueError as e:
-        return (source, "", "skip", str(e))
+  // 5. Validate result looks like a real URL
+  if (!url.match(/^https?:\/\/.+\..+/i)) {
+    return { type: 'skip', output: null, notes: [...notes, 'Result does not look like a valid vendor URL: ' + url] };
+  }
 
+  // 6. Identify vendor from table
+  const vendorMatch = lookupVendor(url);
+  if (vendorMatch) {
+    notes.push('Vendor identified: ' + vendorMatch.name);
+    // Special note for T&F ebooks vs journals (separate SP configs at vendor)
+    if (url.toLowerCase().includes('taylorfrancis.com')) {
+      notes.push('Taylor & Francis Books (taylorfrancis.com) — separate SP from T&F Journals (tandfonline.com); test WAYF independently for each');
+    } else if (url.toLowerCase().includes('tandfonline.com')) {
+      notes.push('Taylor & Francis Journals (tandfonline.com) — separate SP from T&F Books (taylorfrancis.com)');
+    }
+  } else {
+    const skipMatch = lookupSkipVendor(url);
+    if (skipMatch) {
+      notes.push('Vendor identified: ' + skipMatch.name + ' — note: ' + skipMatch.reason);
+    } else {
+      notes.push('Vendor not in confirmed entry point table — check URL manually');
+    }
+  }
 
-# ---------------------------------------------------------------------------
-# File I/O
-# ---------------------------------------------------------------------------
+  if (notes.length === 0 || (notes.length === 1 && notes[0].startsWith('Vendor'))) {
+    // URL was already a plain vendor URL
+    notes.unshift('No proxy wrapping detected — URL returned as-is');
+  }
 
-def read_input(path: Path) -> list[str]:
-    """
-    Read URLs from a .txt or .csv file.
-    For CSV, extracts the first column, skipping a header if the first
-    cell does not look like a URL.
-    """
-    text = path.read_text(encoding="utf-8-sig")
-    lines = text.splitlines()
+  return { type: 'ok', output: url, notes };
+}
 
-    if path.suffix.lower() == ".csv" or ("," in (lines[0] if lines else "")):
-        reader = csv.reader(lines)
-        rows = list(reader)
-        if rows and not re.match(r"^https?://", rows[0][0].strip(), re.IGNORECASE):
-            rows = rows[1:]
-        return [row[0].strip() for row in rows if row and row[0].strip()]
-    else:
-        return [l.strip() for l in lines]
+// ---- Main conversion dispatcher ----
+function convertLine(raw) {
+  const input = raw.trim();
+  if (!input) return null;
 
+  if (currentMode === 'repair') {
+    const result = repairOaUrl(input);
+    return { ...result, input };
+  }
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+  if (currentMode === 'strip') {
+    const result = stripToVendorUrl(input);
+    return { ...result, input };
+  }
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Convert EZproxy or OpenAthens URLs for University of Waikato Library."
-    )
-    parser.add_argument("input", help="Input file (.txt or .csv)")
-    parser.add_argument("output", help="Output CSV file")
+  if (currentMode === 'plain') {
+    if (!input.match(/^https?:\/\//i)) {
+      return { type: 'skip', input, output: null, notes: ['Does not start with http:// or https://'] };
+    }
+    // Skip-vendor check before any conversion attempt
+    const skipMatch = lookupSkipVendor(input);
+    if (skipMatch) {
+      return { type: 'skip', input, output: null, notes: [skipMatch.name + ': ' + skipMatch.reason] };
+    }
+    // Table lookup first
+    const match = lookupVendor(input);
+    if (match) {
+      const deepLink = applyDeepLinkHandler(match.domain, input);
+      if (deepLink) {
+        return { type: 'confirmed', input, output: deepLink,
+          notes: ['Vendor confirmed (' + match.name + ') — deep link preserved'] };
+      } else if (match.deepLinkable) {
+        // Wrap the deep content URL directly — preserve the path for reading lists
+        return { type: 'confirmed', input, output: toOpenAthens(input),
+          notes: ['Vendor confirmed (' + match.name + ') — deep link wrapped in OA redirector'] };
+      } else {
+        // Non-redirector vendor (custom SAML etc.) — deep linking not supported
+        return { type: 'confirmed', input, output: match.url,
+          notes: ['Vendor confirmed (' + match.name + ') — uses custom auth, deep linking not supported; entry point URL used'] };
+      }
+    }
+    return { type: 'ok', input, output: toOpenAthens(input), notes: [] };
+  }
 
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument(
-        "--plain",
-        action="store_true",
-        help="Plain URL mode — wrap vendor URLs in the OA redirector without EZproxy cleaning",
-    )
-    mode_group.add_argument(
-        "--repair",
-        action="store_true",
-        help="Repair mode — diagnose and fix broken OpenAthens URLs",
-    )
-    args = parser.parse_args()
+  // EZproxy mode
+  try {
+    const { url, notes } = cleanEzproxyUrl(input);
+    // Skip-vendor check before any conversion attempt
+    const skipMatch = lookupSkipVendor(url);
+    if (skipMatch) {
+      return { type: 'skip', input, output: null, notes: [skipMatch.name + ': ' + skipMatch.reason] };
+    }
+    // Table lookup on the cleaned URL
+    const match = lookupVendor(url);
+    if (match) {
+      const unusualNotes = notes.filter(n => !n.startsWith('Proxied hostname restored'));
+      const deepLink = applyDeepLinkHandler(match.domain, url);
+      if (deepLink) {
+        return { type: 'confirmed', input, output: deepLink,
+          notes: [...unusualNotes, 'Vendor confirmed (' + match.name + ') — deep link preserved'] };
+      } else if (match.deepLinkable) {
+        // Wrap the cleaned deep content URL — preserve path for reading lists
+        return { type: 'confirmed', input, output: toOpenAthens(url),
+          notes: [...unusualNotes, 'Vendor confirmed (' + match.name + ') — deep link wrapped in OA redirector'] };
+      } else {
+        // Non-redirector vendor — use confirmed entry point, note deep linking not supported
+        return { type: 'confirmed', input, output: match.url,
+          notes: [...unusualNotes, 'Vendor confirmed (' + match.name + ') — uses custom auth, deep linking not supported; entry point URL used'] };
+      }
+    }
+    const output = toOpenAthens(url);
+    const unusualNotes = notes.filter(n => !n.startsWith('Proxied hostname restored'));
+    const type = unusualNotes.length > 0 ? 'warn' : 'ok';
+    return { type, input, output, notes: unusualNotes };
+  } catch(e) {
+    if (e.skip) return { type: 'skip', input, output: null, notes: [e.reason] };
+    return { type: 'skip', input, output: null, notes: ['Unexpected error: ' + e.message] };
+  }
+}
 
-    input_path = Path(args.input)
-    output_path = Path(args.output)
+const BATCH_LIMIT = 2000;
+const REPAIR_LIMIT = 200;
 
-    if not input_path.exists():
-        print(f"Error: input file not found: {input_path}", file=sys.stderr)
-        sys.exit(1)
+function convert() {
+  const raw = document.getElementById('input-urls').value;
+  const lines = raw.split('\n').filter(l => l.trim());
+  if (!lines.length) return;
 
-    urls = read_input(input_path)
-    if not urls:
-        print("Error: no URLs found in input file.", file=sys.stderr)
-        sys.exit(1)
+  const limit = (currentMode === 'repair' || currentMode === 'strip') ? REPAIR_LIMIT : BATCH_LIMIT;
+  const errEl = document.getElementById('limit-error');
+  if (lines.length > limit) {
+    errEl.style.display = 'block';
+    errEl.textContent = lines.length.toLocaleString() + ' URLs entered — the limit for this mode is ' + limit.toLocaleString() + ' per batch.';
+    return;
+  }
+  errEl.style.display = 'none';
 
-    mode_label = "repair" if args.repair else ("plain" if args.plain else "EZproxy")
-    print(f"Processing {len(urls):,} URLs in {mode_label} mode...", flush=True)
+  convertedResults = lines.map(convertLine).filter(Boolean);
+  const outputArea = document.getElementById('output-area');
+  outputArea.innerHTML = '';
 
-    results = [
-        convert_line(u, plain_mode=args.plain, repair_mode=args.repair)
-        for u in urls
-    ]
-    # Drop empty rows from blank lines
-    results = [(s, c, st, n) for s, c, st, n in results if s]
+  let nConfirmed = 0, nOk = 0, nWarn = 0, nSkip = 0, nRepair = 0;
 
-    n_confirmed = sum(1 for _, _, st, _ in results if st == "confirmed")
-    n_ok        = sum(1 for _, _, st, _ in results if st == "ok")
-    n_warn      = sum(1 for _, _, st, _ in results if st == "warn")
-    n_repair    = sum(1 for _, _, st, _ in results if st == "repaired")
-    n_skip      = sum(1 for _, _, st, _ in results if st == "skip")
-    n_total     = len(results)
+  convertedResults.forEach(r => {
+    const block = document.createElement('div');
+    block.className = 'result-block';
 
-    with output_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["source_url", "converted_url", "status", "notes"])
-        for source, converted, status, notes in results:
-            writer.writerow([source, converted, status, notes])
+    const tagClass = { ok: 'tag-ok', confirmed: 'tag-confirmed', warn: 'tag-warn', skip: 'tag-skip', repair: 'tag-repair' }[r.type];
+    const tagText = { ok: 'OK', confirmed: 'CONFIRMED', warn: 'WARN', skip: 'SKIP', repair: 'REPAIRED' }[r.type];
+    const lineClass = { ok: 'result-ok', confirmed: 'result-confirmed', warn: 'result-warn', skip: 'result-skip', repair: 'result-repair' }[r.type];
 
-    def pct(n):
-        return f"({n / n_total * 100:.1f}%)" if n_total else ""
+    let html = `<div class="result-line ${lineClass}"><span class="result-tag ${tagClass}">${tagText}</span>`;
 
-    print(f"\nConversion report")
-    print(f"-----------------")
-    if n_confirmed:
-        print(f"Confirmed entry point used  : {n_confirmed:>6,}  {pct(n_confirmed)}")
-    print(f"Converted cleanly           : {n_ok:>6,}  {pct(n_ok)}")
-    print(f"Converted with warnings     : {n_warn:>6,}  {pct(n_warn)}")
-    if n_repair:
-        print(f"Repaired                    : {n_repair:>6,}  {pct(n_repair)}")
-    print(f"  Total converted           : {n_confirmed+n_ok+n_warn+n_repair:>6,}  "
-          f"{pct(n_confirmed+n_ok+n_warn+n_repair)}")
-    print(f"Not converted (skipped)     : {n_skip:>6,}  {pct(n_skip)}")
-    print(f"  Total processed           : {n_total:>6,}")
-    print(f"\nOutput written to: {output_path}")
+    if (r.output) {
+      html += `<a href="${escHtml(r.output)}" target="_blank" style="color:inherit;text-decoration:none">${escHtml(r.output)}</a>`;
+    } else {
+      html += `<span style="opacity:0.5">${escHtml(r.input)}</span>`;
+    }
+    html += `</div>`;
 
+    if (r.notes && r.notes.length) {
+      const noteClass = r.type === 'confirmed' ? 'note-confirmed' : r.type === 'repair' ? 'note-repair' : '';
+      r.notes.forEach(n => {
+        html += `<span class="result-note ${noteClass}">↳ ${escHtml(n)}</span>`;
+      });
+    }
 
-if __name__ == "__main__":
-    main()
+    block.innerHTML = html;
+    outputArea.appendChild(block);
+
+    if (r.type === 'confirmed') nConfirmed++;
+    else if (r.type === 'ok') nOk++;
+    else if (r.type === 'warn') nWarn++;
+    else if (r.type === 'repair') nRepair++;
+    else nSkip++;
+  });
+
+  const nTotal = convertedResults.length;
+  const nConverted = nConfirmed + nOk + nWarn + nRepair;
+  const pct = (n) => nTotal ? '(' + Math.round(n / nTotal * 100) + '%)' : '';
+
+  document.getElementById('s-total').textContent = nTotal.toLocaleString();
+  document.getElementById('s-confirmed').textContent = nConfirmed.toLocaleString();
+  document.getElementById('s-confirmed-pct').textContent = pct(nConfirmed);
+  document.getElementById('s-ok').textContent = nOk.toLocaleString();
+  document.getElementById('s-ok-pct').textContent = pct(nOk);
+  document.getElementById('s-warn').textContent = nWarn.toLocaleString();
+  document.getElementById('s-warn-pct').textContent = pct(nWarn);
+  document.getElementById('s-repair').textContent = nRepair.toLocaleString();
+  document.getElementById('s-repair-pct').textContent = pct(nRepair);
+  document.getElementById('s-converted').textContent = nConverted.toLocaleString();
+  document.getElementById('s-converted-pct').textContent = pct(nConverted);
+  document.getElementById('s-skip').textContent = nSkip.toLocaleString();
+  document.getElementById('s-skip-pct').textContent = pct(nSkip);
+  document.getElementById('summary-bar').style.display = 'block';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function copyOutput() {
+  const lines = convertedResults
+    .filter(r => r.output)
+    .map(r => r.output)
+    .join('\n');
+  if (!lines) return;
+  navigator.clipboard.writeText(lines).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+
+function csvEscape(val) {
+  if (!val) return '';
+  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+    return '"' + val.replace(/"/g, '""') + '"';
+  }
+  return val;
+}
+
+function downloadOutput() {
+  if (!convertedResults.length) return;
+  const rows = [['source_url', 'converted_url', 'status', 'notes']];
+  convertedResults.forEach(r => {
+    const source = r.input || '';
+    const converted = r.output || '';
+    const status = r.type || '';
+    const notes = (r.notes && r.notes.length) ? r.notes.join('; ') : '';
+    rows.push([csvEscape(source), csvEscape(converted), csvEscape(status), csvEscape(notes)]);
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'openathens-urls.csv';
+  a.click();
+}
+</script>
+</body>
+</html>
